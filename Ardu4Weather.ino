@@ -519,7 +519,7 @@ void loop() {
             //client.print("<link rel='icon' href='");
             //client.print(base64image); what the fuck
             //client.print("'>");
-            client.print("nav { background-color: #333; padding: 10px 0; transition-duration: 0.4s; }");
+            client.print("nav { background-color: #434b4f; padding: 10px 0; transition-duration: 0.4s; }");
             client.print("nav ul { list-style: none; margin: 0; padding: 0; text-align: center; }");
             client.print("nav li { display: inline-block; margin: 0 15px; /* Spacing between navigation items */ }");
             client.print("nav a { color: #ffffff; text-decoration: none; }");
@@ -764,14 +764,18 @@ void loop() {
               client.print("<li><a href='/about'>About</a></li>");
               client.print("<li><a href='/data'>Historical Data</a></li></ul></nav>");
               client.print("<style>");
-              client.print("nav { background-color: #333; padding: 10px 0; transition-duration: 0.4s; }");
+              client.print("nav { background-color: #5e3434; padding: 10px 0; transition-duration: 0.4s; }");
               client.print("nav ul { list-style: none; margin: 0; padding: 0; text-align: center; }");
               client.print("nav li { display: inline-block; margin: 0 15px; /* Spacing between navigation items */ }");
               client.print("nav a { color: #ffffff; text-decoration: none; }");
               client.print("nav a:hover { color: #ccc; }");
+              client.print("h1 { color: #ffffff; text-align: center; margin-bottom: 20px; font-size: 40px; }");
               client.print("body { background: linear-gradient(180deg, hsla(354, 53%, 70%, 1) 0%, hsla(358, 40%, 54%, 1) 100%); font-family: 'Funnel Display', serif; font-weight: 300; margin: 0; /* Remove default margins */ display: flex; flex-direction: column; min-height: 100vh; /* Ensure full viewport height */ transition-duration: 0.4s; }");
+              client.print(".main-container { width: 110%; max-width: 800px; margin: 20px auto; padding: 20px; background-color: #7d4042; box-shadow: 0 0 10px rgba(0, 0, 0, 0.1); /* Subtle shadow */ border-radius: 8px; transition-duration: 0.4s; }");
               client.print("footer { background-color: #333; color: white; text-align: center; padding: 1px 0; margin-top: auto; /* Push footer to bottom */ transition-duration: 0.4s; }");
               client.print("</style></head>");
+              client.print("<body><div class='main-container'><h1>Ardu4Weather - About</h1>");
+              client.print("</div>");
               client.print("<footer><p>This is a website and wether station completely hosted and controlled on my Arduino R4 WiFi! - CS</p></footer>");
               client.print("</html>");
               client.flush();
@@ -791,14 +795,18 @@ void loop() {
               client.print("<li><a href='/about'>About</a></li>");
               client.print("<li><a href='/data'>Historical Data</a></li></ul></nav>");
               client.print("<style>");
-              client.print("nav { background-color: #333; padding: 10px 0; transition-duration: 0.4s; }");
+              client.print("nav { background-color: #45573b; padding: 10px 0; transition-duration: 0.4s; }");
               client.print("nav ul { list-style: none; margin: 0; padding: 0; text-align: center; }");
               client.print("nav li { display: inline-block; margin: 0 15px; /* Spacing between navigation items */ }");
               client.print("nav a { color: #ffffff; text-decoration: none; }");
               client.print("nav a:hover { color: #ccc; }");
+              client.print("h1 { color: #ffffff; text-align: center; margin-bottom: 20px; font-size: 40px; }");
               client.print("body { background: linear-gradient(180deg, hsla(93, 64%, 79%, 1) 0%, hsla(96, 30%, 54%, 1) 100%); font-family: 'Funnel Display', serif; font-weight: 300; margin: 0; /* Remove default margins */ display: flex; flex-direction: column; min-height: 100vh; /* Ensure full viewport height */ transition-duration: 0.4s; }");
+              client.print(".main-container { width: 90%; max-width: 800px; margin: 20px auto; padding: 20px; background-color: #5a7449; box-shadow: 0 0 10px rgba(0, 0, 0, 0.1); /* Subtle shadow */ border-radius: 8px; transition-duration: 0.4s; }");
               client.print("footer { background-color: #333; color: white; text-align: center; padding: 1px 0; margin-top: auto; /* Push footer to bottom */ transition-duration: 0.4s; }");
               client.print("</style></head>");
+              client.print("<body><div class='main-container'><h1>Ardu4Weather - Data</h1>");
+              client.print("</div>");
               client.print("<footer><p>This is a website and wether station completely hosted and controlled on my Arduino R4 WiFi! - CS</p></footer>");
               client.print("</html>");
               client.flush();
@@ -827,6 +835,7 @@ void loop() {
               client.print("footer { background-color: #333; color: white; text-align: center; padding: 1px 0; margin-top: auto; /* Push footer to bottom */ transition-duration: 0.4s; }");
               client.print("</style></head>");
               client.print("<body><h1>Error 404 - Page Not Found</h1>");
+              client.print("</body>");
               client.print("<footer><p>This is a website and wether station completely hosted and controlled on my Arduino R4 WiFi! - CS</p></footer>");
               client.print("</html>");
               break;
