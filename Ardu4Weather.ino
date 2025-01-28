@@ -121,7 +121,7 @@ void NetworkChange() {
         display.setTextSize(2);
         display.setCursor(0, 30);
         display.write(0xEA);
-        delay(1000);
+        delay(100);
         break;
       case 1:
         WiFi.begin(ssid2, password2);
@@ -129,7 +129,7 @@ void NetworkChange() {
         display.setTextSize(2);
         display.setCursor(0, 30);
         display.write(0xEF);
-        delay(1000);
+        delay(100);
         break;
     }
   }
@@ -778,7 +778,7 @@ void loop() {
             client.print("' alt='Weather Station Image'></div>");
             client.print("<span class='material-symbols-outlined'>all_inclusive</span>");
             client.print("<footer><p>This is a website and wether station completely hosted and controlled on my Arduino R4 WiFi! - CS</p></footer>");
-            client.print("</html>");
+            client.print("</body></html>");
             client.flush();
             break;
           } else if (url == "/about") {
@@ -844,7 +844,7 @@ void loop() {
               client.print("<p>Photoresistor</p>");
               client.print("</div></div></div></div>");
               client.print("<footer><p class='footer-p'>This is a website and wether station completely hosted and controlled on my Arduino R4 WiFi! - CS</p></footer>");
-              client.print("</html>");
+              client.print("</body></html>");
               client.flush();
               break;
           } else if (url == "/data") {
@@ -861,18 +861,20 @@ void loop() {
               client.print("<li><a href='/about'>About</a></li>");
               client.print("<li><a href='/data'>Historical Data</a></li></ul></nav>");
               client.print("<style>");
-              client.print("nav { background-color: #333; padding: 10px 0; transition-duration: 0.4s; }");
+              client.print("nav { background-color: #24331e; padding: 10px 0; transition-duration: 0.4s; }");
               client.print("nav ul { list-style: none; margin: 0; padding: 0; text-align: center; }");
               client.print("nav li { display: inline-block; margin: 0 15px; /* Spacing between navigation items */ }");
               client.print("nav a { color: #ffffff; text-decoration: none; }");
               client.print("nav a:hover { color: #ccc; }");
+              client.print("body { background: linear-gradient(180deg, hsla(93, 64%, 79%, 1) 0%, hsla(96, 30%, 54%, 1) 100%); font-family: 'Funnel Display', serif; font-weight: 300; margin: 0; /* Remove default margins */ display: flex; flex-direction: column; min-height: 100vh; /* Ensure full viewport height */ transition-duration: 0.4s; }");
+              client.print(".main-container { width: 110%; max-width: 800px; margin: 20px auto; padding: 20px; background-color: #45573b; box-shadow: 0 0 10px rgba(0, 0, 0, 0.1); /* Subtle shadow */ border-radius: 8px; transition-duration: 0.4s; }");
               client.print("h1 { color: #ffffff; text-align: center; margin-bottom: 20px; font-size: 40px; }");
-              client.print("img { max-width: 30%; height: auto; border-radius: 16px; margin: 30px; }");
+              client.print("footer { background-color: #333; color: white; text-align: center; padding: 1px 0; margin-top: auto; /* Push footer to bottom */ transition-duration: 0.4s; }");
+              client.print("</style>");
               client.print("<body><div class='main-container'><h1>Ardu4Weather - Data</h1>");
-              client.print("<img src=\'https://i.imgur.com/Z8AHWJq.jpeg' alt=\'Arduino Breadboard Image'><br>");
               client.print("</div>");
               client.print("<footer><p>This is a website and wether station completely hosted and controlled on my Arduino R4 WiFi! - CS</p></footer>");
-              client.print("</html>");
+              client.print("</body></html>");
               client.flush();
               break;
           } else { // Serve error 404 page
@@ -900,7 +902,7 @@ void loop() {
               client.print("</style></head>");
               client.print("<body><h1>Error 404 - Page Not Found</h1>");
               client.print("<footer><p>This is a website and wether station completely hosted and controlled on my Arduino R4 WiFi! - CS</p></footer>");
-              client.print("</html>");
+              client.print("</body></html>");
               break;
           }
         }
