@@ -158,7 +158,8 @@ void setup() {
   matrix.begin();
   timeClient.begin();
   timeClient.update();
-  NTPIP = String(timeClient.getNtpServerIP());
+  //NTPIP = String(timeClient.getNTPserverIP());
+  NTPIP = String("null");
   unixTime = timeClient.getEpochTime();
   while (unixTime < 1000) {
     timeClient.update();
@@ -503,7 +504,7 @@ void loop() {
       OLEDPanel2(formattedOutC, formattedOutHumdiditySensor, formattedMagnetSensor, altitude, hoursOnline, daysOnline);
       break;
     case 2:
-      OLEDPanel3(localIP, subnetMask, gatewayIP, NTPIP, signalStrength, perviousMillis);
+      OLEDPanel3(localIP, subnetMask, gatewayIP, NTPIP, signalStrength, previousMillis);
       break;
   }
   display.display(); // Display everything held in buffer
