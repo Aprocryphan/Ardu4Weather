@@ -4,18 +4,18 @@
 #include <NTPClient.h>
 #include <WiFiUdp.h>
 #include <String.h>
-#include <Wire.h>
-#include <Adafruit_GFX.h>
-#include <Adafruit_SSD1306.h>
+#include <Wire.h> // For SCL & SDA communication
+#include <Adafruit_GFX.h> // For OLED Monitor
+#include <Adafruit_SSD1306.h> // For OLED Monitor
 #include "DHT.h"
 #include <Adafruit_BMP085.h> // Use Adafruit BMP085 library for BMP180
 //#include <ArduinoIoTCloud.h>
 //#include <Arduino_ConnectionHandler.h>
-#include "ArduinoGraphics.h"
-#include "Arduino_LED_Matrix.h"
-#define DHTPIN 7 // Digital pin connected to the DHT sensor
-#define DHTOUTPIN 8
-#define DHTTYPE DHT11 // DHT 11
+#include "ArduinoGraphics.h" // For LED Matrix
+#include "Arduino_LED_Matrix.h" // For LED Matrix
+#define DHTPIN 7 // Digital pin connected to the indoor DHT sensor
+#define DHTOUTPIN 8 // Digital pin connected to the outdoor DHT sensor
+#define DHTTYPE DHT11 // The type of DHT sensor
 #define SCREEN_WIDTH 128 // OLED display width, in pixels
 #define SCREEN_HEIGHT 64 // OLED display height, in pixels
 #define OLED_RESET 4 // Reset pin # (or -1 if sharing Arduino reset pin)
@@ -24,10 +24,10 @@ const char* ssid = "SSID";
 const char* ssid2 = "SSID2";
 const char* password = "PASS";
 const char* password2 = "PASS2";
-IPAddress local_IP(192, 168, 1, 100); // Replace with your desired static IP
-IPAddress gateway(192, 168, 1, 1);
-IPAddress subnet(255, 255, 255, 0);
-WiFiServer server(8080); //8080
+IPAddress local_IP(192, 168, 1, 106); // Redundant
+IPAddress gateway(192, 168, 1, 1); // Redundant
+IPAddress subnet(255, 255, 255, 0); // Redundant
+WiFiServer server(8080); // Defines the port that the server is hosted on
 WiFiUDP ntpUDP; // A UDP instance to let the NTPClient communicate over
 NTPClient timeClient(ntpUDP); // Declare NTPClient object
 unsigned long unixTime;
@@ -36,14 +36,20 @@ DHT dht2(DHTOUTPIN, DHTTYPE);
 Adafruit_BMP085 bmp;
 ArduinoLEDMatrix matrix;
 
+//const int placeholder = 0;
+//const int placeholder = 1;
 const int magneticSensor = 2;
 const int redLED = 3; //PWM
 const int piezo = 4;
 const int yellowLED = 5; //PWM
 const int greenLED = 6; //PWM
+//const int placeholder = 7;
+//const int placeholder = 8;
 const int cyanLED = 9; //PWM
 const int blueLED = 10; //PWM
 const int whiteLED = 11; //PWM
+//const int placeholder = 12;
+//const int placeholder = 13;
 
 const int TempSensor = A0;
 const int microphoneSensor = A1;
@@ -58,14 +64,16 @@ float Temp = 0.0;
 float TempAvarage = 0.0; // Stores average temperature
 float LightAvarage = 0.0; // Stores average light level
 const float seaLevelPressure = 101325;
-int interval = 300000; // NTP
-int currentMillis = 0;
-int previousMillis = 0;
-int network = 0;
-int OLEDCurrentMillis = 0;
-int OLEDPreviousMillis = 0;
-int OLEDInterval = 5000;
-int OLEDPanel = 0;
+int interval = 300000; // Referesh interval for NTPUpdate function
+int currentMillis = 0; // for NTPUpdate function
+int previousMillis = 0; // for NTPUpdate function
+int network = 0; // Initial network connection attempt for switch case
+int OLEDCurrentMillis = 0; // For OLED Panel
+int OLEDPreviousMillis = 0; // For OLED Panel
+int OLEDInterval = 5000; // For OLED Panel
+int OLEDPanel = 0; // Initial OLED Panel
+
+// Initialisation of string variables used later
 String formattedTime = "null";
 String dateOnly = "null";
 String timeOnly = "null";
@@ -74,7 +82,9 @@ String formattedLightSensorData = "null";
 String formattedHumdiditySensor = "null";
 String formattedPressureSensor = "null";
 String formattedMicrophoneSensor = "null";
-String timeOnline = "null";
+String secondsOnline = "null";
+String hoursOnline = "null";
+String daysOnline= "null";
 String localIP = "null";
 String subnetMask = "null";
 String gatewayIP = "null";
@@ -83,6 +93,7 @@ String formattedOutC = "null";
 String formattedOutHumdiditySensor = "null";
 String formattedMagnetSensor = "null";
 String altitude = "null";
+String NTPIP = "null";
 String url = "";
 String refferer = "";
 // ⚡☔☁️🌨️🌧️🌩️⛈️🌦️🌥️⛅🌤️🌡️🔥❄️🌫️🌙☀️
@@ -99,6 +110,7 @@ String refferer = "";
 #FFFFFF
 */
 
+// NetworkChange, If the network disconnects, it reconnects to another predefined network
 void NetworkChange() {
   while (WiFi.status() != WL_CONNECTED) {
     network = (network + 1) % 3;
@@ -146,6 +158,7 @@ void setup() {
   matrix.begin();
   timeClient.begin();
   timeClient.update();
+  NTPIP = String(timeClient.getNtpServerIP());
   unixTime = timeClient.getEpochTime();
   while (unixTime < 1000) {
     timeClient.update();
@@ -175,6 +188,7 @@ void setup() {
   RandomStaticLoad();
 }
 
+// RandomStaticLoad, Loads a random predefined image onto the Arduino R4 WiFi led matrix
 const int StaticAnimationSelection = random(0,12);
 void RandomStaticLoad() {
   switch (StaticAnimationSelection) {
@@ -217,6 +231,7 @@ void RandomStaticLoad() {
   }
 }
 
+// ReadTempC, Redundant, reds temp from an analog sensor
 float ReadTempC() {
   int SensorValue = analogRead(TempSensor);
   float Voltage = SensorValue * (5.0 / 1023.0); // Assuming 5V reference
@@ -224,6 +239,7 @@ float ReadTempC() {
   return Temp;
 }
 
+// calculateAverage, A modular function that calculates the avarage from a number of samples
 template <typename T>
 T calculateAverage(T value, unsigned long interval, unsigned long &lastUpdateTime, T &sum, int &count, int &samples) { 
   unsigned long currentTime = millis();
@@ -240,6 +256,7 @@ T calculateAverage(T value, unsigned long interval, unsigned long &lastUpdateTim
   return sum / (count > 0 ? count : 1); // Avoid division by zero
 }
 
+// LiveThermomiterNew, Doesn't work currently
 void LiveThermomiterNew() {
   float currentTemp = dht.readTemperature();
   static int redIntensity = 0;
@@ -291,6 +308,7 @@ void LiveThermomiterNew() {
   analogWrite(blueLED, blueIntensity); 
 }
 
+// LiveThermomiter, Lights up a different colour LED based on what temperature is fetched from the dht1 sensor
 void LiveThermomiter() {
   float currentTemp = dht.readTemperature();
   float currentLight = analogRead(LightSensor);
@@ -338,6 +356,7 @@ void LiveThermomiter() {
   }
 } 
 
+// NTPSync, Syncs the RTC module with the time fetched from the NTP server every 5 mins, helps account for RTC module drift.
 void NTPSync() {
   currentMillis = millis();
   if (currentMillis - previousMillis >= interval) {
@@ -355,6 +374,7 @@ void NTPSync() {
   }
 }
 
+// OLEDHeader, inputs the header of the oled to buffer for displaying, shows some symbols and the current ntp date and time
 void OLEDHeader(String dateOnly, String timeOnly) {
   display.setTextSize(2);
   display.setCursor(0, 0);
@@ -367,7 +387,8 @@ void OLEDHeader(String dateOnly, String timeOnly) {
   display.println(timeOnly);
 }
 
-void OLEDPanel1(String formattedC, String formattedLightSensorData, String formattedHumdiditySensor, String formattedPressureSensor, String formattedMicrophoneSensor, String timeOnline) {
+// OLEDPanel1, Shows a few different readings from the sensors without having to access the website, useful for debugging.
+void OLEDPanel1(String formattedC, String formattedLightSensorData, String formattedHumdiditySensor, String formattedPressureSensor, String formattedMicrophoneSensor, String secondsOnline) {
   display.setTextSize(1);
   display.setCursor(110, 16);
   display.print("1/3");
@@ -384,10 +405,11 @@ void OLEDPanel1(String formattedC, String formattedLightSensorData, String forma
   display.setCursor(0, 48); 
   display.println("Noise: " + formattedMicrophoneSensor + " dB");
   display.setCursor(0, 56); 
-  display.println("Time: " + timeOnline + " Secs");
+  display.println("Time: " + secondsOnline + " Secs");
 }
 
-void OLEDPanel2(String formattedOutC, String formattedOutHumdiditySensor, String formattedMagnetSensor, String altitude) {
+// OLEDPanel2, Shows a few different more readings that couldnt fit on 1 from the sensors without having to access the website, useful for debugging.
+void OLEDPanel2(String formattedOutC, String formattedOutHumdiditySensor, String formattedMagnetSensor, String altitude, String hoursOnline, String daysOnline) {
   display.setTextSize(1);
   display.setCursor(110, 16);
   display.print("2/3");
@@ -402,10 +424,13 @@ void OLEDPanel2(String formattedOutC, String formattedOutHumdiditySensor, String
   display.setCursor(0, 40); 
   display.println("Altitude: " + altitude + "m");
   display.setCursor(0, 48); 
+  display.println("Hours: " + hoursOnline + "H");
   display.setCursor(0, 56); 
+  display.println("Days: " + daysOnline + "D");
 }
 
-void OLEDPanel3(String localIP, String subnetMask, String gatewayIP, String signalStrength) {
+// OLEDPanel3, Shows a few different network statistics, useful for debugging
+void OLEDPanel3(String localIP, String subnetMask, String gatewayIP, String NTPIP, String signalStrength, int previousMillis) {
   display.setTextSize(1);
   display.setCursor(110, 16);
   display.print("3/3");
@@ -416,8 +441,11 @@ void OLEDPanel3(String localIP, String subnetMask, String gatewayIP, String sign
   display.setCursor(0, 32);
   display.println("GIP: " + gatewayIP);
   display.setCursor(0, 40);
-  display.println("Strength: " + signalStrength);
+  display.println("NTPIP: " + NTPIP);
   display.setCursor(0, 48);
+  display.println("Strength: " + signalStrength);
+  display.setCursor(0, 56);
+  display.println("NTP UP: " + previousMillis);
 }
 
 void loop() {
@@ -444,8 +472,10 @@ void loop() {
   String formattedMicrophoneSensor = String(analogRead(microphoneSensor) / 10);
   String formattedMagnetSensor = String(digitalRead(magneticSensor) == 1 ? 0 : 1);
   String altitude = String(bmp.readAltitude(seaLevelPressure));
-  String timeOnline = String((millis() / 1000));
-  String inTempDisplacement = String(constrain((map(dht.readTemperature(),-5,30,-50,13300)),-50,13300));
+  String secondsOnline = String((millis() / 1000));
+  String hoursOnline = String((millis() / 3600000));
+  String daysOnline = String((millis() / 86400000));
+  String inTempDisplacement = String(constrain((map(dht.readTemperature(),-5,30,-50,13300)),-50,13300)); // Displacement for the indicators on the bars, maps and constrains input between -50 and 13300
   String outTempDisplacement = String(constrain((map(dht2.readTemperature(),-5,30,-50,13300)),-50,13300));
   String lightDisplacement = String(constrain((map((analogRead(LightSensor) * 2),0,1000,-50,13300)),-50,13300));
   String inHumidityDisplacement = String(constrain((map(dht.readHumidity(),0,100,-50,13300)),-50,1330));
@@ -467,16 +497,16 @@ void loop() {
   OLEDHeader(dateOnly, timeOnly);
   switch (OLEDPanel) {
     case 0:
-      OLEDPanel1(formattedC, formattedLightSensorData, formattedHumdiditySensor, formattedPressureSensor, formattedMicrophoneSensor, timeOnline);
+      OLEDPanel1(formattedC, formattedLightSensorData, formattedHumdiditySensor, formattedPressureSensor, formattedMicrophoneSensor, secondsOnline);
       break;
     case 1:
-      OLEDPanel2(formattedOutC, formattedOutHumdiditySensor, formattedMagnetSensor, altitude);
+      OLEDPanel2(formattedOutC, formattedOutHumdiditySensor, formattedMagnetSensor, altitude, hoursOnline, daysOnline);
       break;
     case 2:
-      OLEDPanel3(localIP, subnetMask, gatewayIP, signalStrength);
+      OLEDPanel3(localIP, subnetMask, gatewayIP, NTPIP, signalStrength, perviousMillis);
       break;
   }
-  display.display();
+  display.display(); // Display everything held in buffer
   // Website Function
   WiFiClient client = server.available();
   if (client) {
@@ -484,8 +514,8 @@ void loop() {
     while (client.connected()) { // Keep connection open until client disconnects
       if (client.available()) {
         int whiteLightness = map(analogRead(LightSensor), 50, 500, 10, 100);
-        analogWrite(whiteLED, whiteLightness);
-        char c = client.read(); // Read and discard incoming data
+        analogWrite(whiteLED, whiteLightness); // Indicate that data transfer has started
+        char c = client.read(); // Read and save incoming data, initial connection including subpage request
         refferer += c;
         Serial.print("refferrer: ");
         Serial.println(refferer); //Print the data to the serial monitor for debugging
@@ -493,7 +523,7 @@ void loop() {
           int firstSpace = refferer.indexOf(' ');
           int secondSpace = refferer.indexOf(' ', firstSpace + 1);
           url = refferer.substring(firstSpace + 1, secondSpace);
-          url.trim();
+          url.trim(); // Isolated subpage request
           String request = "";
           while (client.available()) {
             char c = client.read();
@@ -519,7 +549,7 @@ void loop() {
             //client.print("<link rel='icon' href='");
             //client.print(base64image); what the fuck
             //client.print("'>");
-            client.print("nav { background-color: #434b4f; padding: 10px 0; transition-duration: 0.4s; }");
+            client.print("nav { background-color: #333; padding: 10px 0; transition-duration: 0.4s; }");
             client.print("nav ul { list-style: none; margin: 0; padding: 0; text-align: center; }");
             client.print("nav li { display: inline-block; margin: 0 15px; /* Spacing between navigation items */ }");
             client.print("nav a { color: #ffffff; text-decoration: none; }");
@@ -657,7 +687,7 @@ void loop() {
             client.print(formattedMagnetSensor);
             client.print("</span></div>");
             client.print("<div class='data-item'><span class='data-label'>Online For:</span><span>");
-            client.print(timeOnline);
+            client.print(secondsOnline);
             client.print(" Seconds</span></div>");
             client.print("<div><button id='toggleButton'>Show Averages</button></div>");
             // Hidden Avarage Data, 1H
@@ -764,23 +794,18 @@ void loop() {
               client.print("<li><a href='/about'>About</a></li>");
               client.print("<li><a href='/data'>Historical Data</a></li></ul></nav>");
               client.print("<style>");
-              client.print("nav { background-color: #5e3434; padding: 10px 0; transition-duration: 0.4s; }");
+              client.print("nav { background-color: #333; padding: 10px 0; transition-duration: 0.4s; }");
               client.print("nav ul { list-style: none; margin: 0; padding: 0; text-align: center; }");
               client.print("nav li { display: inline-block; margin: 0 15px; /* Spacing between navigation items */ }");
               client.print("nav a { color: #ffffff; text-decoration: none; }");
               client.print("nav a:hover { color: #ccc; }");
-              client.print("h1 { color: #ffffff; text-align: center; margin-bottom: 20px; font-size: 40px; }");
               client.print("body { background: linear-gradient(180deg, hsla(354, 53%, 70%, 1) 0%, hsla(358, 40%, 54%, 1) 100%); font-family: 'Funnel Display', serif; font-weight: 300; margin: 0; /* Remove default margins */ display: flex; flex-direction: column; min-height: 100vh; /* Ensure full viewport height */ transition-duration: 0.4s; }");
-              client.print(".main-container { width: 110%; max-width: 800px; margin: 20px auto; padding: 20px; background-color: #7d4042; box-shadow: 0 0 10px rgba(0, 0, 0, 0.1); /* Subtle shadow */ border-radius: 8px; transition-duration: 0.4s; }");
               client.print("footer { background-color: #333; color: white; text-align: center; padding: 1px 0; margin-top: auto; /* Push footer to bottom */ transition-duration: 0.4s; }");
               client.print("</style></head>");
-              client.print("<body><div class='main-container'><h1>Ardu4Weather - About</h1>");
-              client.print("</div>");
               client.print("<footer><p>This is a website and wether station completely hosted and controlled on my Arduino R4 WiFi! - CS</p></footer>");
               client.print("</html>");
               client.flush();
               break;
-              //
           } else if (url == "/data") {
               Serial.println("Data Page Requested");
               client.print("HTTP/1.1 200 OK\r\n");
@@ -795,18 +820,14 @@ void loop() {
               client.print("<li><a href='/about'>About</a></li>");
               client.print("<li><a href='/data'>Historical Data</a></li></ul></nav>");
               client.print("<style>");
-              client.print("nav { background-color: #45573b; padding: 10px 0; transition-duration: 0.4s; }");
+              client.print("nav { background-color: #333; padding: 10px 0; transition-duration: 0.4s; }");
               client.print("nav ul { list-style: none; margin: 0; padding: 0; text-align: center; }");
               client.print("nav li { display: inline-block; margin: 0 15px; /* Spacing between navigation items */ }");
               client.print("nav a { color: #ffffff; text-decoration: none; }");
               client.print("nav a:hover { color: #ccc; }");
-              client.print("h1 { color: #ffffff; text-align: center; margin-bottom: 20px; font-size: 40px; }");
               client.print("body { background: linear-gradient(180deg, hsla(93, 64%, 79%, 1) 0%, hsla(96, 30%, 54%, 1) 100%); font-family: 'Funnel Display', serif; font-weight: 300; margin: 0; /* Remove default margins */ display: flex; flex-direction: column; min-height: 100vh; /* Ensure full viewport height */ transition-duration: 0.4s; }");
-              client.print(".main-container { width: 90%; max-width: 800px; margin: 20px auto; padding: 20px; background-color: #5a7449; box-shadow: 0 0 10px rgba(0, 0, 0, 0.1); /* Subtle shadow */ border-radius: 8px; transition-duration: 0.4s; }");
               client.print("footer { background-color: #333; color: white; text-align: center; padding: 1px 0; margin-top: auto; /* Push footer to bottom */ transition-duration: 0.4s; }");
               client.print("</style></head>");
-              client.print("<body><div class='main-container'><h1>Ardu4Weather - Data</h1>");
-              client.print("</div>");
               client.print("<footer><p>This is a website and wether station completely hosted and controlled on my Arduino R4 WiFi! - CS</p></footer>");
               client.print("</html>");
               client.flush();
@@ -835,7 +856,6 @@ void loop() {
               client.print("footer { background-color: #333; color: white; text-align: center; padding: 1px 0; margin-top: auto; /* Push footer to bottom */ transition-duration: 0.4s; }");
               client.print("</style></head>");
               client.print("<body><h1>Error 404 - Page Not Found</h1>");
-              client.print("</body>");
               client.print("<footer><p>This is a website and wether station completely hosted and controlled on my Arduino R4 WiFi! - CS</p></footer>");
               client.print("</html>");
               break;
@@ -843,10 +863,10 @@ void loop() {
         }
       }
     }
-    url = "";
-    refferer = "";
-    client.stop();
+    client.stop(); // Disconnect the client because all data has been sent
     Serial.println("Client disconnected.");
     analogWrite(whiteLED, LOW);
+    url = ""; // Empty out for next connection request
+    refferer = ""; // Empty out for next connection request
   }
 }
