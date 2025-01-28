@@ -779,7 +779,7 @@ void loop() {
               client.print(".image-text-container { display: flex; flex-direction: column; width: 80%; margin: 20px auto; }");
               client.print(".image-text-pair { display: flex; align-items: center; margin-bottom: 20px; }");
               client.print(".image-text-pair img { max-width: 30%; height: auto; border-radius: 16px; margin-right: -30px; margin-left: -40px; }");
-              client.print(".image-text p { width: 100%; padding: 40px; box-sizing: border-box; margin-left: 30px; text-align: left; }");
+              client.print(".image-text p { width: 110%; padding: 40px; padding-top: 0px; box-sizing: border-box; margin-left: 30px; text-align: left; }");
               client.print("footer { background-color: #333; color: white; text-align: center; padding: 1px 0; margin-top: auto; /* Push footer to bottom */ transition-duration: 0.4s; }");
               client.print("</style></head>");
               client.print("<body><div class='main-container'><h1>Ardu4Weather - About</h1>");
