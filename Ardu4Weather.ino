@@ -474,8 +474,8 @@ void loop() {
   String formattedMagnetSensor = String(digitalRead(magneticSensor) == 1 ? 0 : 1);
   String altitude = String(bmp.readAltitude(seaLevelPressure));
   String secondsOnline = String((millis() / 1000));
-  String hoursOnline = String((millis() / 3600000));
-  String daysOnline = String((millis() / 86400000));
+  String hoursOnline = String(float(millis() / 3600000.0));
+  String daysOnline = String(float(millis() / 86400000.0));
   String inTempDisplacement = String(constrain((map(dht.readTemperature(),-5,30,-50,13300)),-50,13300)); // Displacement for the indicators on the bars, maps and constrains input between -50 and 13300
   String outTempDisplacement = String(constrain((map(dht2.readTemperature(),-5,30,-50,13300)),-50,13300));
   String lightDisplacement = String(constrain((map((analogRead(LightSensor) * 2),0,1000,-50,13300)),-50,13300));
@@ -518,8 +518,6 @@ void loop() {
         analogWrite(whiteLED, whiteLightness); // Indicate that data transfer has started
         char c = client.read(); // Read and save incoming data, initial connection including subpage request
         refferer += c;
-        Serial.print("refferrer: ");
-        Serial.println(refferer); //Print the data to the serial monitor for debugging
         if (c == '\n') { // Check for end of line
           int firstSpace = refferer.indexOf(' ');
           int secondSpace = refferer.indexOf(' ', firstSpace + 1);
@@ -534,22 +532,21 @@ void loop() {
           Serial.println(url);
           if (url == "/") {
             Serial.println("Main Page Requested");
-            String base64Image = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAA8AAAAPCAYAAAA71pVKAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAADsMAAA7DAcdvqGQAAAJtSURBVDhPjZJbS1RRFMf/a8854zjjXMS8jKVEZlIPoaOWgVpKty8QmkPhQOSD+BBUb2HzGkSPRqBpQdg30BTthklaFgZpRkGiUjN5YS5qZ+bs1h5l6EVycRabdfb6rctei/CvdHZqOUUlTRagRUiziqT0wDRXYcpJPp8shRaeIhhMbHsjDTsf9B0ion6NUKFBQkgJMiUgTf5MZk0kpZwiGM3hjo4viknBVgVK+doqKFcnwk5wQmnSDEnNrI1wAFKlUkHxhFWIclb8F2Y1TPPD+lq4WghvcTO7lKsKdIZL3S44dV2ZaXFarTjo8aTut6Vcd+U0a5zAr6xabz56G+uxvLEJr92OxzOzuDs5heuVPlw6UobFaAw5NhuuDA7hxfwCJMFP1NUd0oTY863lAlpHXmIqFEY2Z+49fQp2zYJ1I4HAwBAHzIRN09Bz/gwO9zxCPJkMqzqy9zrsiBoG5tbW0Fntw7H8XNx68xa+PD7HxlHjLcC9xpOYW15BhP0KsxyMyWwFry7E4tyXjgMuJ4IT7zH+8xeCNdX4yFXcPnEcY4tLuPH8FUo8brjYT7WgOKL73QPc97mz+wrxsKEeS/E4ijhy/+xX3OFAN6sqcLGsFPORCAocDlwdHMbIj3kYUj4j0dV7mcffl8EvmaVrKHO7EYrFENncTI/KxW+Ql2lLlR1PJNSowGvWShgd1Wj2+zsr0dFdz1nK6XW7XinQ0JBgoAlEYdXILuS3Bezf1makpv6nLTCj63odJ51OXe8gvMufNB110Wvtn5WdXplowD9TmtyotEAECGKIf61s3dAKdzFMoMD+DOFbbt8CAeAvAWQk4b6NVW4AAAAASUVORK5CYII=";
             client.print("HTTP/1.1 200 OK\r\n");
-            client.print("Content-Type: text/html\r\n\r\n");
+            client.print("Content-Type: text/html; charset=utf-8\r\n\r\n");
+            client.print("<!DOCTYPE html><html lang='en'>");
+            client.print("<meta name='viewport' content='width=device-width'>");
             // Style/CSS Section
-            client.print("<html><head><title>Ardu4Weather</title>");
+            client.print("<head><title>Ardu4Weather</title>");
             client.print("<link rel='preconnect' href='https://fonts.googleapis.com'>");
             client.print("<link rel='preconnect' href='https://fonts.gstatic.com' crossorigin>");
             client.print("<link href='https://fonts.googleapis.com/css2?family=Funnel+Display:wght@300..800&display=swap' rel='stylesheet'>");
             client.print("<link rel='stylesheet' href='https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&icon_names=all_inclusive' />");
+            client.print("<link rel='icon' href='https://i.imgur.com/mlL3Fiw.png'>");
             client.print("<nav><ul><li><a href='/'>Home</a></li>");
             client.print("<li><a href='/about'>About</a></li>");
             client.print("<li><a href='/data'>Historical Data</a></li></ul></nav>");
             client.print("<style>");
-            //client.print("<link rel='icon' href='");
-            //client.print(base64image); what the fuck
-            //client.print("'>");
             client.print("nav { background-color: #434b4f; padding: 10px 0; transition-duration: 0.4s; font-size: 16px;}");
             client.print("nav ul { list-style: none; margin: 0; padding: 0; text-align: center; }");
             client.print("nav li { display: inline-block; margin: 0 15px; /* Spacing between navigation items */ }");
@@ -581,29 +578,29 @@ void loop() {
             client.print(".noise-slider-bar { width: 100%; height: 5px; background: linear-gradient(90deg,hsla(0, 0%, 100%, 1) 0%, hsla(358, 40%, 54%, 1) 100%); border-radius: 5px; margin-bottom: 30px; position: relative; }");
             client.print(".in-temp-indicator { position: absolute; transform: translate(");
             client.print(inTempDisplacement);
-            client.print("%, -40%); width: 6px;  height: 20; background-color: white; box-shadow: 0 0 2px rgba(0, 0, 0, 0.5); border-radius: 2px; }");
+            client.print("%, -40%); width: 6px; height: 20px; background-color: white; box-shadow: 0 0 2px rgba(0, 0, 0, 0.5); border-radius: 2px; }");
             client.print(".out-temp-indicator { position: absolute; transform: translate(");
             client.print(outTempDisplacement);
-            client.print("%, -40%); width: 6px;  height: 20; background-color: white; box-shadow: 0 0 2px rgba(0, 0, 0, 0.5); border-radius: 2px; }");
+            client.print("%, -40%); width: 6px; height: 20px; background-color: white; box-shadow: 0 0 2px rgba(0, 0, 0, 0.5); border-radius: 2px; }");
             client.print(".light-indicator { position: absolute; transform: translate(");
             client.print(lightDisplacement);
-            client.print("%, -40%); width: 6px;  height: 20; background-color: white; box-shadow: 0 0 2px rgba(0, 0, 0, 0.5); border-radius: 2px; }");
+            client.print("%, -40%); width: 6px; height: 20px; background-color: white; box-shadow: 0 0 2px rgba(0, 0, 0, 0.5); border-radius: 2px; }");
             client.print(".in-humidity-indicator { position: absolute; transform: translate(");
             client.print(inHumidityDisplacement);
-            client.print("%, -40%); width: 6px;  height: 20; background-color: white; box-shadow: 0 0 2px rgba(0, 0, 0, 0.5); border-radius: 2px; }");
+            client.print("%, -40%); width: 6px; height: 20px; background-color: white; box-shadow: 0 0 2px rgba(0, 0, 0, 0.5); border-radius: 2px; }");
             client.print(".out-humidity-indicator { position: absolute; transform: translate(");
             client.print(outHumidityDisplacement);
-            client.print("%, -40%); width: 6px;  height: 20; background-color: white; box-shadow: 0 0 2px rgba(0, 0, 0, 0.5); border-radius: 2px; }");
+            client.print("%, -40%); width: 6px; height: 20px; background-color: white; box-shadow: 0 0 2px rgba(0, 0, 0, 0.5); border-radius: 2px; }");
             client.print(".pressure-indicator { position: absolute; transform: translate(");
             client.print(pressureDisplacement);
-            client.print("%, -40%); width: 6px;  height: 20; background-color: white; box-shadow: 0 0 2px rgba(0, 0, 0, 0.5); border-radius: 2px; }");
+            client.print("%, -40%); width: 6px; height: 20px; background-color: white; box-shadow: 0 0 2px rgba(0, 0, 0, 0.5); border-radius: 2px; }");
             client.print(".altitude-indicator { position: absolute; transform: translate(");
             client.print(altitudeDisplacement);
-            client.print("%, -40%); width: 6px;  height: 20; background-color: white; box-shadow: 0 0 2px rgba(0, 0, 0, 0.5); border-radius: 2px; }");
+            client.print("%, -40%); width: 6px; height: 20px; background-color: white; box-shadow: 0 0 2px rgba(0, 0, 0, 0.5); border-radius: 2px; }");
             client.print(".noise-indicator { position: absolute; transform: translate(");
             client.print(noiseDisplacement);
-            client.print("%, -40%); width: 6px;  height: 20; background-color: white; box-shadow: 0 0 2px rgba(0, 0, 0, 0.5); border-radius: 2px; }");
-            client.print("img { max-width: 100%; height: auto; display: block; margin: 20px auto; border-radius: 8px; box-shadow: 0 0 5px rgba(0, 0, 0, 0.1); }");
+            client.print("%, -40%); width: 6px; height: 20px; background-color: white; box-shadow: 0 0 2px rgba(0, 0, 0, 0.5); border-radius: 2px; }");
+            client.print(".footer-image img { max-width: 7%; height: auto; display: block; margin: 20px auto; }");
             client.print("button { background-color: #ffffff; color: #84a8b2; /* White text */ padding: 10px 20px; border: none; border-radius: 5px; cursor: pointer; display: block; /* Make it a block element */ margin: 0 auto; /* Center horizontally */ transition-duration: 0.4s; }");
             client.print("button:hover { background-color: #84a8b2; color: #ffffff; /* White text */ padding: 10px 20px; border: none; border-radius: 5px; cursor: pointer; display: block; /* Make it a block element */ margin: 0 auto; /* Center horizontally */ }");
             client.print("button:active { background-color: #7293A1; color: #ffffff; /* White text */ padding: 10px 20px; border: none; border-radius: 5px; cursor: pointer; display: block; /* Make it a block element */ margin: 0 auto; /* Center horizontally */ transform: translateY(2px);}");
@@ -773,10 +770,8 @@ void loop() {
             client.print("  }");
             client.print("});");
             client.print("</script>");
-            client.print("<img src='");
-            client.print(base64Image);
-            client.print("' alt='Weather Station Image'></div>");
-            client.print("<span class='material-symbols-outlined'>all_inclusive</span>");
+            client.print("<div class='footer-image'><img src='https://i.imgur.com/mlL3Fiw.png' alt='Ardu4Weather Logo'></div></div>");
+            //client.print("<span class='material-symbols-outlined'>all_inclusive</span>");
             client.print("<footer><p>This is a website and wether station completely hosted and controlled on my Arduino R4 WiFi! - CS</p></footer>");
             client.print("</body></html>");
             client.flush();
@@ -784,13 +779,16 @@ void loop() {
           } else if (url == "/about") {
               Serial.println("About Page Requested");
               client.print("HTTP/1.1 200 OK\r\n");
-              client.print("Content-Type: text/html\r\n\r\n");
+              client.print("Content-Type: text/html; charset=utf-8\r\n\r\n");
+              client.print("<!DOCTYPE html><html lang='en'>");
+              client.print("<meta name='viewport' content='width=device-width'>");
               // Style/CSS Section
               client.print("<html><head><title>Ardu4Weather</title></head>");
               client.print("<link rel='preconnect' href='https://fonts.googleapis.com'>");
               client.print("<link rel='preconnect' href='https://fonts.gstatic.com' crossorigin>");
               client.print("<link href='https://fonts.googleapis.com/css2?family=Funnel+Display:wght@300..800&display=swap' rel='stylesheet'>");
               client.print("<link rel='stylesheet' href='https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&icon_names=all_inclusive' />");
+              client.print("<link rel='icon' href='https://i.imgur.com/mlL3Fiw.png'>");
               client.print("<nav><ul><li><a href='/'>Home</a></li>");
               client.print("<li><a href='/about'>About</a></li>");
               client.print("<li><a href='/data'>Historical Data</a></li></ul></nav>");
@@ -850,13 +848,16 @@ void loop() {
           } else if (url == "/data") {
               Serial.println("Data Page Requested");
               client.print("HTTP/1.1 200 OK\r\n");
-              client.print("Content-Type: text/html\r\n\r\n");
+              client.print("Content-Type: text/html; charset=utf-8\r\n\r\n");
+              client.print("<!DOCTYPE html><html lang='en'>");
+              client.print("<meta name='viewport' content='width=device-width'>");
               // Style/CSS Section
               client.print("<html><head><title>Ardu4Weather</title></head>");
               client.print("<link rel='preconnect' href='https://fonts.googleapis.com'>");
               client.print("<link rel='preconnect' href='https://fonts.gstatic.com' crossorigin>");
               client.print("<link href='https://fonts.googleapis.com/css2?family=Funnel+Display:wght@300..800&display=swap' rel='stylesheet'>");
               client.print("<link rel='stylesheet' href='https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&icon_names=all_inclusive' />");
+              client.print("<link rel='icon' href='https://i.imgur.com/mlL3Fiw.png'>");
               client.print("<nav><ul><li><a href='/'>Home</a></li>");
               client.print("<li><a href='/about'>About</a></li>");
               client.print("<li><a href='/data'>Historical Data</a></li></ul></nav>");
@@ -880,13 +881,16 @@ void loop() {
           } else { // Serve error 404 page
               Serial.println("Error 404");
               client.print("HTTP/1.1 200 OK\r\n");
-              client.print("Content-Type: text/html\r\n\r\n");
+              client.print("Content-Type: text/html; charset=utf-8\r\n\r\n");
+              client.print("<!DOCTYPE html><html lang='en'>");
+              client.print("<meta name='viewport' content='width=device-width'>");
               // Style/CSS Section
               client.print("<html><head><title>Ardu4Weather</title></head>");
               client.print("<link rel='preconnect' href='https://fonts.googleapis.com'>");
               client.print("<link rel='preconnect' href='https://fonts.gstatic.com' crossorigin>");
               client.print("<link href='https://fonts.googleapis.com/css2?family=Funnel+Display:wght@300..800&display=swap' rel='stylesheet'>");
               client.print("<link rel='stylesheet' href='https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&icon_names=all_inclusive' />");
+              client.print("<link rel='icon' href='https://i.imgur.com/mlL3Fiw.png'>");
               client.print("<nav><ul><li><a href='/'>Home</a></li>");
               client.print("<li><a href='/about'>About</a></li>");
               client.print("<li><a href='/data'>Historical Data</a></li></ul></nav>");
