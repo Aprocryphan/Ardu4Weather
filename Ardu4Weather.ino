@@ -533,11 +533,17 @@ void loop() {
           if (url == "/") {
             Serial.println("Main Page Requested");
             client.print("HTTP/1.1 200 OK\r\n");
-            client.print("Content-Type: text/html; charset=utf-8\r\n\r\n");
+            client.print("Content-Type: text/html; charset=utf-8\r\n");
+            client.print("X-Content-Type-Options: nosniff\r\n");
+            client.print("Cache-Control: no-cache, public\r\n");
+            client.print("Server: Arduino\r\n");
+            client.print("Content-Security-Policy: frame-ancestors 'self';\r\n");
+            client.print("\r\n");
             client.print("<!DOCTYPE html><html lang='en'>");
             client.print("<meta name='viewport' content='width=device-width'>");
             // Style/CSS Section
-            client.print("<head><title>Ardu4Weather</title>");
+            client.print("<head><meta charset='utf-8'>");
+            client.print("<title>Ardu4Weather</title>");
             client.print("<link rel='preconnect' href='https://fonts.googleapis.com'>");
             client.print("<link rel='preconnect' href='https://fonts.gstatic.com' crossorigin>");
             client.print("<link href='https://fonts.googleapis.com/css2?family=Funnel+Display:wght@300..800&display=swap' rel='stylesheet'>");
@@ -779,11 +785,17 @@ void loop() {
           } else if (url == "/about") {
               Serial.println("About Page Requested");
               client.print("HTTP/1.1 200 OK\r\n");
-              client.print("Content-Type: text/html; charset=utf-8\r\n\r\n");
+              client.print("Content-Type: text/html; charset=utf-8\r\n");
+              client.print("X-Content-Type-Options: nosniff\r\n");
+              client.print("Cache-Control: no-cache, public\r\n");
+              client.print("Server: Arduino\r\n");
+              client.print("Content-Security-Policy: frame-ancestors 'self';\r\n");
+              client.print("\r\n");
               client.print("<!DOCTYPE html><html lang='en'>");
               client.print("<meta name='viewport' content='width=device-width'>");
               // Style/CSS Section
-              client.print("<html><head><title>Ardu4Weather</title></head>");
+              client.print("<head><meta charset='utf-8'>");
+              client.print("<title>Ardu4Weather</title>");
               client.print("<link rel='preconnect' href='https://fonts.googleapis.com'>");
               client.print("<link rel='preconnect' href='https://fonts.gstatic.com' crossorigin>");
               client.print("<link href='https://fonts.googleapis.com/css2?family=Funnel+Display:wght@300..800&display=swap' rel='stylesheet'>");
@@ -848,11 +860,17 @@ void loop() {
           } else if (url == "/data") {
               Serial.println("Data Page Requested");
               client.print("HTTP/1.1 200 OK\r\n");
-              client.print("Content-Type: text/html; charset=utf-8\r\n\r\n");
+              client.print("Content-Type: text/html; charset=utf-8\r\n");
+              client.print("X-Content-Type-Options: nosniff\r\n");
+              client.print("Cache-Control: no-cache, public\r\n");
+              client.print("Server: Arduino\r\n");
+              client.print("Content-Security-Policy: frame-ancestors 'self';\r\n");
+              client.print("\r\n");
               client.print("<!DOCTYPE html><html lang='en'>");
               client.print("<meta name='viewport' content='width=device-width'>");
               // Style/CSS Section
-              client.print("<html><head><title>Ardu4Weather</title></head>");
+              client.print("<head><meta charset='utf-8'>");
+              client.print("<title>Ardu4Weather</title>");
               client.print("<link rel='preconnect' href='https://fonts.googleapis.com'>");
               client.print("<link rel='preconnect' href='https://fonts.gstatic.com' crossorigin>");
               client.print("<link href='https://fonts.googleapis.com/css2?family=Funnel+Display:wght@300..800&display=swap' rel='stylesheet'>");
@@ -871,7 +889,7 @@ void loop() {
               client.print(".main-container { width: 110%; max-width: 800px; margin: 20px auto; padding: 20px; background-color: #45573b; box-shadow: 0 0 10px rgba(0, 0, 0, 0.1); /* Subtle shadow */ border-radius: 8px; transition-duration: 0.4s; }");
               client.print("h1 { color: #ffffff; text-align: center; margin-bottom: 20px; font-size: 40px; }");
               client.print("footer { background-color: #333; color: white; text-align: center; padding: 1px 0; margin-top: auto; /* Push footer to bottom */ transition-duration: 0.4s; }");
-              client.print("</style>");
+              client.print("</style></head>");
               client.print("<body><div class='main-container'><h1>Ardu4Weather - Data</h1>");
               client.print("</div>");
               client.print("<footer><p>This is a website and wether station completely hosted and controlled on my Arduino R4 WiFi! - CS</p></footer>");
@@ -881,11 +899,17 @@ void loop() {
           } else { // Serve error 404 page
               Serial.println("Error 404");
               client.print("HTTP/1.1 200 OK\r\n");
-              client.print("Content-Type: text/html; charset=utf-8\r\n\r\n");
+              client.print("Content-Type: text/html; charset=utf-8\r\n");
+              client.print("X-Content-Type-Options: nosniff\r\n");
+              client.print("Cache-Control: no-cache, public\r\n");
+              client.print("Server: Arduino\r\n");
+              client.print("Content-Security-Policy: frame-ancestors 'self';\r\n");
+              client.print("\r\n");
               client.print("<!DOCTYPE html><html lang='en'>");
               client.print("<meta name='viewport' content='width=device-width'>");
               // Style/CSS Section
-              client.print("<html><head><title>Ardu4Weather</title></head>");
+              client.print("<head><meta charset='utf-8'>");
+              client.print("<title>Ardu4Weather</title>");
               client.print("<link rel='preconnect' href='https://fonts.googleapis.com'>");
               client.print("<link rel='preconnect' href='https://fonts.gstatic.com' crossorigin>");
               client.print("<link href='https://fonts.googleapis.com/css2?family=Funnel+Display:wght@300..800&display=swap' rel='stylesheet'>");
