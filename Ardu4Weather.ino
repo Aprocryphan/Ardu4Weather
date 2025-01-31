@@ -72,6 +72,9 @@ int OLEDCurrentMillis = 0; // For OLED Panel
 int OLEDPreviousMillis = 0; // For OLED Panel
 int OLEDInterval = 5000; // For OLED Panel
 int OLEDPanel = 0; // Initial OLED Panel
+int CSVCurrentMillis = 0; // For CSV Data
+int CSVPreviousMillis = 0; // For CSV Data
+int CSVInterval = 600000; // For CSV Data
 
 // Initialisation of string variables used later
 String formattedTime = "null";
@@ -190,7 +193,8 @@ void setup() {
 }
 
 // RandomStaticLoad, Loads a random predefined image onto the Arduino R4 WiFi led matrix
-const int StaticAnimationSelection = random(0,12);
+//const int StaticAnimationSelection = random(0,12);
+const int StaticAnimationSelection = 3;
 void RandomStaticLoad() {
   switch (StaticAnimationSelection) {
     case 0:
@@ -507,11 +511,26 @@ void loop() {
       OLEDPanel3(localIP, subnetMask, gatewayIP, NTPIP, signalStrength, previousMillis);
       break;
   }
+  CSVCurrentMillis = millis();
+  if (CSVCurrentMillis - CSVPreviousMillis >= CSVInterval) { // Every 10 mins print data to serial monitor, saves to CSV file.
+    CSVPreviousMillis = CSVCurrentMillis;
+    Serial.print("§"+dateOnly + ",");
+    Serial.print(timeOnly + ",");
+    Serial.print(formattedC + ",");
+    Serial.print(formattedOutC + ",");
+    Serial.print(formattedLightSensorData + ",");
+    Serial.print(formattedHumdiditySensor + ",");
+    Serial.print(formattedOutHumdiditySensor + ",");
+    Serial.print(formattedPressureSensor + ",");
+    Serial.print(formattedMicrophoneSensor + ",");
+    Serial.println(secondsOnline+"\n");
+  }
   display.display(); // Display everything held in buffer
   // Website Function
   WiFiClient client = server.available();
   if (client) {
     Serial.println("New Client.");
+    matrix.loadFrame(LEDMATRIX_CLOUD_WIFI);
     while (client.connected()) { // Keep connection open until client disconnects
       if (client.available()) {
         int whiteLightness = map(analogRead(LightSensor), 50, 500, 10, 100);
@@ -755,6 +774,7 @@ void loop() {
             client.print(" dB</span></div>");
             client.print("</div>");
             client.print("<body><div class='sidebar-container'><h1>Side Container</h1>");
+            client.print("<p>https://github.com/Aprocryphan/Ardu4Weather</p>");
             client.print("</div>");
             // Javascript for button
             client.print("<script>");
@@ -938,6 +958,7 @@ void loop() {
     }
     client.stop(); // Disconnect the client because all data has been sent
     Serial.println("Client disconnected.");
+    RandomStaticLoad();
     analogWrite(whiteLED, LOW);
     url = ""; // Empty out for next connection request
     refferer = ""; // Empty out for next connection request
