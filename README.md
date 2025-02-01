@@ -13,16 +13,19 @@ It is constantly evolving and changing as I develop it and right now it isn't fi
 * Hosts a web server to serve an HTML page with sensor data
 * Synchronizes time with NTP servers
 * LED Matrix for visual indicators
+* Sends data when requested OTA to save on computer
 
 Components Used:
-* Arduino Uno R4 WiFi
+* Arduino UNO R4 WiFi
 * DHT11 sensors for temperature and humidity
 * BMP180 sensor for pressure and altitude
-* OLED display (128x64)
+* MAX4466 Electret Microphone Amplifier for noise levels
+* OLED Module 12864 (128x64, Yellow & Blue)
 * Photoresistor for light level detection
 * Various LEDs for visual indicators
 
 ## Installation
+**Disclaimer: The vast majority of features used in this project require either the Arduino UNO R4 WiFi or the Arduino UNO R4 Minima**
 1. Clone the repository:
 ```
   git clone https://github.com/Aprocryphan/Ardu4Weather.git
@@ -40,7 +43,7 @@ Components Used:
 * Adafruit_BMP085
 * ArduinoGraphics
 * Arduino_LED_Matrix
-4. Upload the code to your Arduino Uno R4 WiFi.
+4. Upload the code to your Arduino UNO R4 WiFi.
 
 ## Usage
 1. Connect the sensors and components as per the pin configuration in the code.
@@ -49,10 +52,17 @@ Components Used:
 4. Sensor data will be displayed on the OLED screen.
 5. Access the web server hosted on the Arduino to view the data in a web browser.
 
-## Contributing
+## Acknowledgements
+Some of the code that I use was taken from online tutorials and libraries, I would like to thank the authors of all of the libraries I use and these tutorials
+1. https://lastminuteengineers.com/max4466-arduino-tutorial/
 
+## Links
+Here are some links to certain components I use\
+[Arduino UNO R4 WiFi](https://store.arduino.cc/collections/boards-modules/products/uno-r4-wifi)
+
+## Contributing
 Contributions are welcome! Feel free to open issues or submit pull requests.
 
 ## License
-
 This project is licensed under the MIT License.
+https://opensource.org/license/mit
