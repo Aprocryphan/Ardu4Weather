@@ -73,6 +73,8 @@ int OLEDCurrentMillis = 0; // For OLED Panel
 int OLEDPreviousMillis = 0; // For OLED Panel
 int OLEDInterval = 5000; // For OLED Panel
 int OLEDPanel = 0; // Initial OLED Panel
+const int sampleWindow = 50;  // Sample window width in mS (50 mS = 20Hz)
+unsigned int sample;
 
 // Initialisation of string variables used later
 String formattedTime = "null";
@@ -96,7 +98,7 @@ String formattedMagnetSensor = "null";
 String altitude = "null";
 String NTPIP = "null";
 String url = "";
-String refferer = "";
+String referrer = "";
 // ⚡☔☁️🌨️🌧️🌩️⛈️🌦️🌥️⛅🌤️🌡️🔥❄️🌫️🌙☀️
 /*
 #333333
@@ -407,7 +409,7 @@ void OLEDPanel1(String formattedC, String formattedLightSensorData, String forma
   display.setCursor(0, 40); 
   display.println("Pressure: " + formattedPressureSensor + " mBar");
   display.setCursor(0, 48); 
-  display.println("Noise: " + formattedMicrophoneSensor + " dB");
+  display.println("Noise: " + formattedMicrophoneSensor + " U");
   display.setCursor(0, 56); 
   display.println("Time: " + secondsOnline + " Secs");
 }
@@ -452,6 +454,25 @@ void OLEDPanel3(String localIP, String subnetMask, String gatewayIP, String NTPI
   display.println("NTP UP: " + previousMillis);
 }
 
+int MicLevels() {
+  unsigned long startMillis = millis(); // Start of sample window
+  unsigned int peakToPeak = 0;   // peak-to-peak level
+  unsigned int signalMax = 0;
+  unsigned int signalMin = 1024;
+  while (millis() - startMillis < sampleWindow) {
+    sample = analogRead(microphoneSensor);
+    if (sample < 1024) {  // toss out spurious readings
+      if (sample > signalMax) {
+        signalMax = sample;  // save just the max levels
+      } else if (sample < signalMin) {
+        signalMin = sample;  // save just the min levels
+      }
+    }
+  }
+  peakToPeak = signalMax - signalMin;  // max - min = peak-peak amplitude
+  return peakToPeak;
+}
+
 void loop() {
   // Put continuous updates here
   LiveThermomiter();
@@ -474,7 +495,7 @@ void loop() {
   String formattedOutHumdiditySensor = String(dht2.readHumidity());
   float pressure = bmp.readPressure();
   String formattedPressureSensor = String(pressure / 100);
-  String formattedMicrophoneSensor = String(analogRead(microphoneSensor) / 10);
+  String formattedMicrophoneSensor = String(MicLevels());
   String formattedMagnetSensor = String(digitalRead(magneticSensor) == 1 ? 0 : 1);
   String altitude = String(bmp.readAltitude(seaLevelPressure));
   String secondsOnline = String((millis() / 1000));
@@ -487,7 +508,7 @@ void loop() {
   String outHumidityDisplacement = String(constrain((map(dht2.readHumidity(),0,100,-50,13300)),-50,13300));
   String pressureDisplacement = String(constrain((map((pressure / 100),980,1030,-50,13300)),-50,13300));
   String altitudeDisplacement = String(constrain((map(bmp.readAltitude(seaLevelPressure),0,3000,-50,13300)),-50,13300));
-  String noiseDisplacement = String(constrain((map((analogRead(microphoneSensor) / 10),10,110,-50,13300)),-50,13300));
+  String noiseDisplacement = String(constrain((map((MicLevels()),10,700,-50,13300)),-50,13300));
   localIP = WiFi.localIP().toString();
   subnetMask = WiFi.subnetMask().toString();
   gatewayIP = WiFi.gatewayIP().toString();
@@ -543,11 +564,11 @@ void loop() {
         int whiteLightness = map(analogRead(LightSensor), 50, 500, 10, 100);
         analogWrite(whiteLED, whiteLightness); // Indicate that data transfer has started
         char c = WebClient.read(); // Read and save incoming data, initial connection including subpage request
-        refferer += c;
+        referrer += c;
         if (c == '\n') { // Check for end of line
-          int firstSpace = refferer.indexOf(' ');
-          int secondSpace = refferer.indexOf(' ', firstSpace + 1);
-          url = refferer.substring(firstSpace + 1, secondSpace);
+          int firstSpace = referrer.indexOf(' ');
+          int secondSpace = referrer.indexOf(' ', firstSpace + 1);
+          url = referrer.substring(firstSpace + 1, secondSpace);
           url.trim(); // Isolated subpage request
           String request = "";
           while (WebClient.available()) {
@@ -707,11 +728,11 @@ void loop() {
             WebClient.print("</div>");
             WebClient.print("<div class='data-item'><span class='data-label'>Noise Level:</span><span>");
             WebClient.print(formattedMicrophoneSensor);
-            WebClient.print(" dB</span></div>");
+            WebClient.print(" Units</span></div>");
             WebClient.print("<div class='slider-container'>");
-            WebClient.print("<span class='slider-text noise-left'>10 dB</span>");
+            WebClient.print("<span class='slider-text noise-left'>10 U</span>");
             WebClient.print("<div class='noise-slider-bar'><div class='noise-indicator'></div></div>");
-            WebClient.print("<span class='slider-text noise-right'>110 dB</span> ");
+            WebClient.print("<span class='slider-text noise-right'>700 U</span> ");
             WebClient.print("</div>");
             WebClient.print("<div class='data-item'><span class='data-label'>Presence Of Strong Magnetic Field:</span><span>");
             WebClient.print(formattedMagnetSensor);
@@ -901,7 +922,7 @@ void loop() {
               WebClient.print("<link rel='preconnect' href='https://fonts.googleapis.com'>");
               WebClient.print("<link rel='preconnect' href='https://fonts.gstatic.com' crossorigin>");
               WebClient.print("<link href='https://fonts.googleapis.com/css2?family=Funnel+Display:wght@300..800&display=swap' rel='stylesheet'>");
-              WebClient.print("<link rel='stylesheet' href='https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&icon_names=all_inclusive' />");
+              WebClient.print("<link rel='stylesheet' href='https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&icon_names=construction' />");
               WebClient.print("<link rel='icon' href='https://i.imgur.com/mlL3Fiw.png'>");
               WebClient.print("<nav><ul><li><a href='/'>Home</a></li>");
               WebClient.print("<li><a href='/about'>About</a></li>");
@@ -912,12 +933,63 @@ void loop() {
               WebClient.print("nav li { display: inline-block; margin: 0 15px; /* Spacing between navigation items */ }");
               WebClient.print("nav a { color: #ffffff; text-decoration: none; }");
               WebClient.print("nav a:hover { color: #ccc; }");
+              WebClient.print(".material-symbols-outlined { font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24 }");
+              WebClient.print(".icon { font-size: 16px; color: #ffffff; z-index: 0; }");
               WebClient.print("body { background: linear-gradient(180deg, hsla(93, 64%, 79%, 1) 0%, hsla(96, 30%, 54%, 1) 100%); font-family: 'Funnel Display', serif; font-weight: 300; margin: 0; /* Remove default margins */ display: flex; flex-direction: column; min-height: 100vh; /* Ensure full viewport height */ transition-duration: 0.4s; }");
               WebClient.print(".main-container { width: 110%; max-width: 800px; margin: 20px auto; padding: 20px; background-color: #45573b; box-shadow: 0 0 10px rgba(0, 0, 0, 0.1); /* Subtle shadow */ border-radius: 8px; transition-duration: 0.4s; }");
               WebClient.print("h1 { color: #ffffff; text-align: center; margin-bottom: 20px; font-size: 40px; }");
+              WebClient.print("h2 { color: #ffffff; text-align: center; margin-bottom: 20px; font-size: 20px; }");
+              WebClient.print("p { color: #ffffff; text-align: center; margin-bottom: 20px; }");
               WebClient.print("footer { background-color: #333; color: white; text-align: center; padding: 1px 0; margin-top: auto; /* Push footer to bottom */ transition-duration: 0.4s; }");
               WebClient.print("</style></head>");
               WebClient.print("<body><div class='main-container'><h1>Ardu4Weather - Data</h1>");
+              WebClient.print("<h2>Historical Data</h2>");
+              WebClient.print("<p>Page Under Construction! <span class='material-symbols-outlined icon'>construction</span></p>");
+              WebClient.print("</div>");
+              WebClient.print("<footer><p>This is a website and wether station completely hosted and controlled on my Arduino R4 WiFi! - CS</p></footer>");
+              WebClient.print("</body></html>");
+              WebClient.flush();
+              break;
+          } else if (url == "/aprocryphan") {
+              Serial.println("About Apro Page Requested");
+              WebClient.print("HTTP/1.1 200 OK\r\n");
+              WebClient.print("Content-Type: text/html; charset=utf-8\r\n");
+              WebClient.print("X-Content-Type-Options: nosniff\r\n");
+              WebClient.print("Cache-Control: no-cache, public\r\n");
+              WebClient.print("Server: Arduino\r\n");
+              WebClient.print("Content-Security-Policy: frame-ancestors 'self';\r\n");
+              WebClient.print("\r\n");
+              WebClient.print("<!DOCTYPE html><html lang='en'>");
+              WebClient.print("<meta name='viewport' content='width=device-width'>");
+              // Style/CSS Section
+              WebClient.print("<head><meta charset='utf-8'>");
+              WebClient.print("<title>Ardu4Weather</title>");
+              WebClient.print("<link rel='preconnect' href='https://fonts.googleapis.com'>");
+              WebClient.print("<link rel='preconnect' href='https://fonts.gstatic.com' crossorigin>");
+              WebClient.print("<link href='https://fonts.googleapis.com/css2?family=Funnel+Display:wght@300..800&display=swap' rel='stylesheet'>");
+              WebClient.print("<link rel='stylesheet' href='https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&icon_names=construction' />");
+              WebClient.print("<link rel='icon' href='https://i.imgur.com/mlL3Fiw.png'>");
+              WebClient.print("<nav><ul><li><a href='/'>Home</a></li>");
+              WebClient.print("<li><a href='/about'>About</a></li>");
+              WebClient.print("<li><a href='/data'>Historical Data</a></li></ul></nav>");
+              WebClient.print("<style>");
+              WebClient.print("nav { background-color: #ffffff; padding: 10px 0; transition-duration: 0.4s; }");
+              WebClient.print("nav ul { list-style: none; margin: 0; padding: 0; text-align: center; }");
+              WebClient.print("nav li { display: inline-block; margin: 0 15px; /* Spacing between navigation items */ }");
+              WebClient.print("nav a { color: #000000; text-decoration: none; }");
+              WebClient.print("nav a:hover { color: #ccc; }");
+              WebClient.print(".material-symbols-outlined { font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24 }");
+              WebClient.print("body { background: #000000; font-family: 'Funnel Display', serif; font-weight: 300; margin: 0; /* Remove default margins */ display: flex; flex-direction: column; min-height: 100vh; /* Ensure full viewport height */ transition-duration: 0.4s; }");
+              WebClient.print(".icon { font-size: 16px; color: #000000; z-index: 0; }");
+              WebClient.print(".main-container { width: 110%; max-width: 800px; margin: 20px auto; padding: 20px; background-color: #ffffff; border-radius: 8px; transition-duration: 0.4s; }");
+              WebClient.print("h1 { color: #000000; text-align: center; margin-bottom: 20px; font-size: 40px; }");
+              WebClient.print("h2 { color: #000000; text-align: center; margin-bottom: 20px; font-size: 20px; }");
+              WebClient.print("p { color: #000000; }");
+              WebClient.print("footer { background-color: #ffffff; color: white; text-align: center; padding: 1px 0; margin-top: auto; /* Push footer to bottom */ transition-duration: 0.4s; }");
+              WebClient.print("</style></head>");
+              WebClient.print("<body><div class='main-container'><h1>Ardu4Weather - Aprocryphan</h1>");
+              WebClient.print("<h2>About</h2>");
+              WebClient.print("<p>Page Under Construction! <span class='material-symbols-outlined icon'>construction</span></p>");
               WebClient.print("</div>");
               WebClient.print("<footer><p>This is a website and wether station completely hosted and controlled on my Arduino R4 WiFi! - CS</p></footer>");
               WebClient.print("</body></html>");
@@ -940,22 +1012,32 @@ void loop() {
               WebClient.print("<link rel='preconnect' href='https://fonts.googleapis.com'>");
               WebClient.print("<link rel='preconnect' href='https://fonts.gstatic.com' crossorigin>");
               WebClient.print("<link href='https://fonts.googleapis.com/css2?family=Funnel+Display:wght@300..800&display=swap' rel='stylesheet'>");
-              WebClient.print("<link rel='stylesheet' href='https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&icon_names=all_inclusive' />");
+              WebClient.print("<link rel='stylesheet' href='https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&icon_names=sentiment_very_dissatisfied' />");
               WebClient.print("<link rel='icon' href='https://i.imgur.com/mlL3Fiw.png'>");
               WebClient.print("<nav><ul><li><a href='/'>Home</a></li>");
               WebClient.print("<li><a href='/about'>About</a></li>");
               WebClient.print("<li><a href='/data'>Historical Data</a></li></ul></nav>");
               WebClient.print("<style>");
+              WebClient.print(".material-symbols-outlined { font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24 }");
               WebClient.print("nav { background-color: #333; padding: 10px 0; transition-duration: 0.4s; }");
               WebClient.print("nav ul { list-style: none; margin: 0; padding: 0; text-align: center; }");
               WebClient.print("nav li { display: inline-block; margin: 0 15px; /* Spacing between navigation items */ }");
               WebClient.print("nav a { color: #ffffff; text-decoration: none; }");
               WebClient.print("nav a:hover { color: #ccc; }");
               WebClient.print("body { font-family: 'Funnel Display', serif; font-weight: 300; margin: 0; /* Remove default margins */ display: flex; flex-direction: column; min-height: 100vh; /* Ensure full viewport height */ transition-duration: 0.4s; }");
-              WebClient.print("h1 { color: #000000; text-align: center; margin-bottom: 20px; font-size: 50px; }");
+              WebClient.print(".center-container { display: flex; justify-content: center; align-items: center; flex-grow: 1; }");
+              WebClient.print(".background-icon { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); font-size: 1000px; color: #000000; opacity: 0.03; z-index: 0; }");
+              WebClient.print("h1 { color: #999999; text-align: center; margin-bottom: 20px; font-size: 70px; }");
+              WebClient.print("h2 { color: #999999; text-align: center; margin-bottom: 20px; font-size: 50px; }");
               WebClient.print("footer { background-color: #333; color: white; text-align: center; padding: 1px 0; margin-top: auto; /* Push footer to bottom */ transition-duration: 0.4s; }");
               WebClient.print("</style></head>");
-              WebClient.print("<body><h1>Error 404 - Page Not Found</h1>");
+              WebClient.print("<body><div class='center-container'>");
+              WebClient.print("<div>");
+              WebClient.print("<h1>Error 404 - Page Not Found</h1>");
+              WebClient.print("<h2>The page you're looking for wasn't found on the server</h2>");
+              WebClient.print("</div>");
+              WebClient.print("</div>");
+              WebClient.print("<span class='material-symbols-outlined background-icon'>sentiment_very_dissatisfied</span>");
               WebClient.print("<footer><p>This is a website and wether station completely hosted and controlled on my Arduino R4 WiFi! - CS</p></footer>");
               WebClient.print("</body></html>");
               break;
@@ -968,6 +1050,6 @@ void loop() {
     RandomStaticLoad();
     analogWrite(whiteLED, LOW);
     url = ""; // Empty out for next connection request
-    refferer = ""; // Empty out for next connection request
+    referrer = ""; // Empty out for next connection request
   }
 }
