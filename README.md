@@ -14,6 +14,7 @@ It is constantly evolving and changing as I develop it and right now it isn't fi
 * Synchronizes time with NTP servers
 * LED Matrix for visual indicators
 * Sends data when requested OTA to save on computer
+* Works with Arduino Cloud IoT & Google Home
 
 Components Used:
 * Arduino UNO R4 WiFi
@@ -54,7 +55,10 @@ Components Used:
 
 ## Acknowledgements
 Some of the code that I use was taken from online tutorials and libraries, I would like to thank the authors of all of the libraries I use and these tutorials
-1. https://lastminuteengineers.com/max4466-arduino-tutorial/
+1. [MAX4466 Tutorial](https://lastminuteengineers.com/max4466-arduino-tutorial/)
+2. [R4 Cheat Sheet](https://docs.arduino.cc/tutorials/uno-r4-wifi/cheat-sheet/)
+3. [Image To Arduino Code](https://javl.github.io/image2cpp/)
+4. [Google Font Used](https://fonts.google.com/shareselection.family=Funnel+Display:wght@300..800)
 
 ## Links
 Here are some links to certain components I use\
@@ -66,3 +70,6 @@ Contributions are welcome! Feel free to open issues or submit pull requests.
 ## License
 This project is licensed under the MIT License.
 https://opensource.org/license/mit
+
+Icons Used For Website Lisence
+https://www.apache.org/licenses/LICENSE-2.0.html
