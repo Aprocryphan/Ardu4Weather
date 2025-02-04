@@ -1,0 +1,25 @@
+:Author: aprocryphan
+:Email: simcoxdylan7@gmail.com
+:Date: 21/12/2024
+:Revision: version 1.0
+:License: Public Domain
+
+= Project: Ardu4Weather Lite (IoT Compatable Version)
+
+A version of Ardu4Weather with all its website functionality removed and replaced with Arduino IoT compatibility instead, this version will work with google home.
+
+== Step 1: Installation
+
+1. Open this file in arduino cloud IoT editor
+2. Add secrets for cloud connectivity
+
+== Step 3: Load the code
+
+Upload the code contained in this sketch on to your board
+
+=== License
+This project is licensed under the MIT License. https://opensource.org/license/mit
+
+=== Contributing
+
+Feel free to contribute to the GitHub page https://github.com/Aprocryphan/Ardu4Weather
