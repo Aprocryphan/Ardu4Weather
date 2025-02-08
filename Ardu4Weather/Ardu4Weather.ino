@@ -1,16 +1,18 @@
-#include <WiFi.h>
-#include "RTC.h"
+#include "thingProperties.h"
+#include "arduino_secrets.h"
+#include "A4WBitmaps.h"
+#include <WDT.h> // Watchdog Timer
+#include <WiFi.h> // For WiFi connection
+#include "RTC.h" // For Real Time Clock
 #include <EEPROM.h> // Persistant value storage 1Kb max
-#include <NTPClient.h>
+#include <NTPClient.h> // For NTP (Network Time Protocol) time
 #include <WiFiUdp.h>
 #include <String.h>
 #include <Wire.h> // For SCL & SDA communication
 #include <Adafruit_GFX.h> // For OLED Monitor
 #include <Adafruit_SSD1306.h> // For OLED Monitor
-#include "DHT.h"
+#include "DHT.h" // For DHT11 sensor
 #include <Adafruit_BMP085.h> // Use Adafruit BMP085 library for BMP180
-//#include <ArduinoIoTCloud.h>
-//#include <Arduino_ConnectionHandler.h>
 #include "ArduinoGraphics.h" // For LED Matrix
 #include "Arduino_LED_Matrix.h" // For LED Matrix
 #define DHTPIN 7 // Digital pin connected to the indoor DHT sensor
@@ -19,23 +21,19 @@
 #define SCREEN_WIDTH 128 // OLED display width, in pixels
 #define SCREEN_HEIGHT 64 // OLED display height, in pixels
 #define OLED_RESET 4 // Reset pin # (or -1 if sharing Arduino reset pin)
-Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
-const char* ssid = "SSID";
-const char* ssid2 = "SSID2";
-const char* password = "PASS";
-const char* password2 = "PASS2";
+Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET); // Declares the OLED display
 IPAddress local_IP(192, 168, 1, 106); // Redundant
 IPAddress gateway(192, 168, 1, 1); // Redundant
 IPAddress subnet(255, 255, 255, 0); // Redundant
-WiFiServer WebServer(8080); // Defines the port that the server is hosted on
-WiFiServer DataServer(8081);
+WiFiServer WebServer(8080); // Defines the port that the web server is hosted on
+WiFiServer DataServer(8081); // Defines the port that the data server is hosted on
 WiFiUDP ntpUDP; // A UDP instance to let the NTPClient communicate over
 NTPClient timeClient(ntpUDP); // Declare NTPClient object
-unsigned long unixTime;
-DHT dht(DHTPIN, DHTTYPE);
-DHT dht2(DHTOUTPIN, DHTTYPE);
-Adafruit_BMP085 bmp;
-ArduinoLEDMatrix matrix;
+unsigned long unixTime; // Variable to hold unix time fetched from NTP server
+DHT dht(DHTPIN, DHTTYPE); // Create a DHT object for the indoor sensor
+DHT dht2(DHTOUTPIN, DHTTYPE); // Create a DHT object for the outdoor sensor
+Adafruit_BMP085 bmp; // Create a BMP object for the BMP180 sensor
+ArduinoLEDMatrix matrix; // Create a matrix object for the LED Matrix
 
 //const int placeholder = 0;
 //const int placeholder = 1;
@@ -66,24 +64,29 @@ float TempAvarage = 0.0; // Stores average temperature
 float LightAvarage = 0.0; // Stores average light level
 const float seaLevelPressure = 101325;
 int interval = 300000; // Referesh interval for NTPUpdate function
-int currentMillis = 0; // for NTPUpdate function
-int previousMillis = 0; // for NTPUpdate function
-int network = 0; // Initial network connection attempt for switch case
-int OLEDCurrentMillis = 0; // For OLED Panel
-int OLEDPreviousMillis = 0; // For OLED Panel
+long long unsigned currentMillis = 0; // for all millis functions
+long long unsigned previousMillis = 0; // for NTPUpdate function
+int network = -1; // Initial network connection attempt for switch case
+long long unsigned OLEDPreviousMillis = 0; // For OLED Panel
 int OLEDInterval = 5000; // For OLED Panel
 int OLEDPanel = 0; // Initial OLED Panel
 const int sampleWindow = 50;  // Sample window width in mS (50 mS = 20Hz)
-unsigned int sample;
+unsigned int sample; // Sample value from the pressure sensor
+const int NUM_READINGS = 288; // 24 hours of data, one reading every 5 minutes
+float pressureReadings[NUM_READINGS]; // Array to store pressure readings
+int readingIndex = 0; // Keep track of the current position in the array
+long long unsigned DPPreviousMillis = 0;
+const int DPInterval = 500000;
+const int wdtInterval = 60000; // Watchdog Timer Interval (60 seconds)
 
-// Initialisation of string variables used later
+// Initialisation of string variables used later, Commented variables are handled by cloud.
 String formattedTime = "null";
 String dateOnly = "null";
 String timeOnly = "null";
-String formattedC = "null";
+//String formattedC = "null";
 String formattedLightSensorData = "null";
-String formattedHumdiditySensor = "null";
-String formattedPressureSensor = "null";
+//String formattedHumdiditySensor = "null";
+//String formattedPressureSensor = "null";
 String formattedMicrophoneSensor = "null";
 String secondsOnline = "null";
 String hoursOnline = "null";
@@ -92,8 +95,8 @@ String localIP = "null";
 String subnetMask = "null";
 String gatewayIP = "null";
 String signalStrength = "null";
-String formattedOutC = "null";
-String formattedOutHumdiditySensor = "null";
+//String formattedOutC = "null";
+//String formattedOutHumdiditySensor = "null";
 String formattedMagnetSensor = "null";
 String altitude = "null";
 String NTPIP = "null";
@@ -113,31 +116,6 @@ String referrer = "";
 #FFFFFF
 */
 
-// NetworkChange, If the network disconnects, it reconnects to another predefined network
-void NetworkChange() {
-  while (WiFi.status() != WL_CONNECTED) {
-    network = (network + 1) % 3;
-    switch(network) {
-      case 0:
-        WiFi.begin(ssid, password);
-        Serial.println("Changed to network 1.");
-        display.setTextSize(2);
-        display.setCursor(0, 30);
-        display.write(0xEA);
-        delay(100);
-        break;
-      case 1:
-        WiFi.begin(ssid2, password2);
-        Serial.println("Changed to network 2.");
-        display.setTextSize(2);
-        display.setCursor(0, 30);
-        display.write(0xEF);
-        delay(100);
-        break;
-    }
-  }
-}
-
 void setup() {
   pinMode(magneticSensor, INPUT);
   pinMode(redLED, OUTPUT);
@@ -148,14 +126,24 @@ void setup() {
   pinMode(whiteLED, OUTPUT);
   Serial.begin(57600);
   Serial1.begin(57600);
-  Serial.println("*******************************************************");
-  NetworkChange();
+  Serial.println("*************** Ardu4Weather v0.5.0 - Commit 14 *******************");
+  display.cp437(true);
+  if(!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) {   // Address 0x3C for 128x64
+    Serial.println(F("SSD1306 allocation failed"));
+    for(;;); // Don't proceed, loop forever
+  }
+  display.clearDisplay();
+  display.setTextSize(1); 
+  display.setTextColor(WHITE);
+  display.drawBitmap(0, 0, epd_bitmap_CompositeLogo, 128, 64, WHITE);
+  display.display();
+  NetworkChange(); // Connect to WiFi
   Serial.println("");
   Serial.print("Connected to WiFi. IP address: ");
   String localIP = WiFi.localIP().toString();
   Serial.println(localIP);
-  WebServer.begin();
-  DataServer.begin();
+  WebServer.begin(); // Start website hosting server, port 8080
+  DataServer.begin(); // Start data sending server, port 8081
   dht.begin();
   dht2.begin();
   RTC.begin();
@@ -163,13 +151,13 @@ void setup() {
   timeClient.begin();
   timeClient.update();
   //NTPIP = String(timeClient.getNTPserverIP());
-  NTPIP = String("null");
+  NTPIP = String("null"); // Set to null, as the NTP server IP is not used yet
   unixTime = timeClient.getEpochTime();
-  while (unixTime < 1000) {
+  while (unixTime < 1000) { // If the unix time is less than 1000, it's not a valid time
     timeClient.update();
     unixTime = timeClient.getEpochTime();
     Serial.println("Failed to get proper unix time, refreshing.");
-    delay(500);
+    delay(200);
   }
   Serial.print("Unix Time: ");
   Serial.println(unixTime);
@@ -179,18 +167,61 @@ void setup() {
   RTC.getTime(currentTime);
   Serial.print("RTC Time: ");
   Serial.println(currentTime);
-  display.cp437(true);
-  if(!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) {   // Address 0x3C for 128x64
-    Serial.println(F("SSD1306 allocation failed"));
-    for(;;); // Don't proceed, loop forever
-  }
   if (!bmp.begin()) {
     Serial.println("Could not find a valid BMP085/BMP180 sensor, check wiring!");
+    display.clearDisplay();
+    display.setCursor(0, 16); 
+    display.print("Could not find a valid BMP085/BMP180 sensor, check wiring!");
+    display.display();
+    for(;;); // Don't proceed, loop forever
   }
-  display.clearDisplay();
-  display.setTextSize(1); 
-  display.setTextColor(WHITE); 
-  RandomStaticLoad();
+  if(WDT.begin(wdtInterval)) {
+    Serial.print("WDT interval: ");
+    WDT.refresh();
+    Serial.print(WDT.getTimeout());
+    WDT.refresh();
+    Serial.println(" ms");
+    WDT.refresh();
+  } else {
+    Serial.println("Error initializing watchdog");
+    display.clearDisplay();
+    display.setCursor(0, 16); 
+    display.print("Error initializing watchdog");
+    display.display();
+    for (;;); // Don't proceed, loop forever
+  }
+  //RandomStaticLoad();
+  initProperties();
+  ArduinoCloud.begin(ArduinoIoTPreferredConnection); // Connect to arduino cloud
+  setDebugMessageLevel(2); // Set debug verbosity 0-4
+  ArduinoCloud.printDebugInfo(); // Print to cloud console
+}
+
+// NetworkChange, If the network disconnects, it reconnects to another predefined network
+void NetworkChange() {
+  while (WiFi.status() != WL_CONNECTED) {
+    network = (network + 1) % 3;
+    switch(network) {
+      case 0:
+        WiFi.begin(SECRET_SSID, SECRET_OPTIONAL_PASS);
+        Serial.println("Changed to network 1.");
+        display.setTextSize(2);
+        display.setCursor(0, 30);
+        display.write(0xEA);
+        display.display();
+        delay(100);
+        break;
+      case 1:
+        WiFi.begin(SECRET_SSID_2, SECRET_OPTIONAL_PASS_2);
+        Serial.println("Changed to network 2.");
+        display.setTextSize(2);
+        display.setCursor(0, 30);
+        display.write(0xEF);
+        display.display();
+        delay(100);
+        break;
+    }
+  }
 }
 
 // RandomStaticLoad, Loads a random predefined image onto the Arduino R4 WiFi led matrix
@@ -368,6 +399,8 @@ void NTPSync() {
   if (currentMillis - previousMillis >= interval) {
     previousMillis = currentMillis;
     if (timeClient.update()) {
+      int whiteLightness = map(analogRead(LightSensor), 50, 500, 10, 100);
+      analogWrite(whiteLED, whiteLightness);
       unixTime = timeClient.getEpochTime();
       Serial.print("Unix Time: ");
       Serial.println(unixTime);
@@ -376,6 +409,23 @@ void NTPSync() {
       RTC.setTime(timeToSet);
     } else {
       Serial.println("NTP Update Failed");
+    }
+  }
+  analogWrite(whiteLED, LOW);
+}
+
+float DeltaPressure24() {
+  if (currentMillis - DPPreviousMillis >= DPInterval) {
+    previousMillis = currentMillis;
+    float currentPressure = bmp.readPressure(); // Get current pressure reading
+    pressureReadings[readingIndex] = currentPressure;   // Store the new reading in the array
+    readingIndex = (readingIndex + 1) % NUM_READINGS; // Wrap around the array
+    if (readingIndex >= NUM_READINGS) { // Only calculate after 24 hours of data
+      int oldestIndex = (readingIndex + 1) % NUM_READINGS; // Index of the oldest reading
+      float deltaP = currentPressure - pressureReadings[oldestIndex]; 
+      return deltaP;
+    } else {
+      return 0.0;
     }
   }
 }
@@ -436,7 +486,7 @@ void OLEDPanel2(String formattedOutC, String formattedOutHumdiditySensor, String
 }
 
 // OLEDPanel3, Shows a few different network statistics, useful for debugging
-void OLEDPanel3(String localIP, String subnetMask, String gatewayIP, String NTPIP, String signalStrength, int previousMillis) {
+void OLEDPanel3(String localIP, String subnetMask, String gatewayIP, String NTPIP, String signalStrength, int previousMillis, float DP24) {
   display.setTextSize(1);
   display.setCursor(110, 16);
   display.print("3/3");
@@ -451,7 +501,8 @@ void OLEDPanel3(String localIP, String subnetMask, String gatewayIP, String NTPI
   display.setCursor(0, 48);
   display.println("Strength: " + signalStrength);
   display.setCursor(0, 56);
-  display.println("NTP UP: " + previousMillis);
+  //display.println("NTP UP: " + previousMillis);
+  display.println("DP: " + String(DP24));
 }
 
 int MicLevels() {
@@ -475,29 +526,34 @@ int MicLevels() {
 
 void loop() {
   // Put continuous updates here
+  WDT.refresh();
   LiveThermomiter();
   NetworkChange();
   NTPSync();
+  DeltaPressure24();
+  float DP24 = DeltaPressure24();
+  ArduinoCloud.update();
+  currentMillis = millis();
 
   RTCTime currentTime;
   RTC.getTime(currentTime);
   String stringTime = String(currentTime);
   int tPosition = stringTime.indexOf('T');
-  String timeOnly = stringTime.substring(tPosition + 1);
-  String dateOnly = stringTime.substring(0, tPosition);
-  String formattedTime = String(dateOnly + " / " + timeOnly);
-  String formattedC = String(dht.readTemperature()); 
+  timeOnly = stringTime.substring(tPosition + 1);
+  dateOnly = stringTime.substring(0, tPosition);
+  formattedTime = String(dateOnly + " / " + timeOnly);
+  formattedC = String(dht.readTemperature()); 
   String formattedF = String((dht.readTemperature() * 9/5) + 32);
-  String formattedOutC = String(dht2.readTemperature()); 
+  formattedOutC = String(dht2.readTemperature()); 
   String formattedOutF = String((dht2.readTemperature() * 9/5) + 32);
-  String formattedLightSensorData = String((analogRead(LightSensor) * 2)); 
-  String formattedHumdiditySensor = String(dht.readHumidity());
-  String formattedOutHumdiditySensor = String(dht2.readHumidity());
+  formattedLightSensorData = String((analogRead(LightSensor) * 2)); 
+  formattedHumdiditySensor = String(dht.readHumidity());
+  formattedOutHumdiditySensor = String(dht2.readHumidity());
   float pressure = bmp.readPressure();
-  String formattedPressureSensor = String(pressure / 100);
-  String formattedMicrophoneSensor = String(MicLevels());
-  String formattedMagnetSensor = String(digitalRead(magneticSensor) == 1 ? 0 : 1);
-  String altitude = String(bmp.readAltitude(seaLevelPressure));
+  formattedPressureSensor = String(pressure / 100);
+  formattedMicrophoneSensor = String(MicLevels());
+  formattedMagnetSensor = String(digitalRead(magneticSensor) == 1 ? 0 : 1);
+  altitude = String(bmp.readAltitude(seaLevelPressure));
   String secondsOnline = String((millis() / 1000));
   String hoursOnline = String(float(millis() / 3600000.0));
   String daysOnline = String(float(millis() / 86400000.0));
@@ -515,9 +571,8 @@ void loop() {
   signalStrength = String(WiFi.RSSI());
 
   // OLED Data Display Function
-  OLEDCurrentMillis = millis();
-  if (OLEDCurrentMillis - OLEDPreviousMillis >= OLEDInterval) {
-    OLEDPreviousMillis = OLEDCurrentMillis;
+  if (currentMillis - OLEDPreviousMillis >= OLEDInterval) {
+    OLEDPreviousMillis = currentMillis;
     OLEDPanel = (OLEDPanel + 1) % 3;
   }
   display.clearDisplay();
@@ -530,7 +585,7 @@ void loop() {
       OLEDPanel2(formattedOutC, formattedOutHumdiditySensor, formattedMagnetSensor, altitude, hoursOnline, daysOnline);
       break;
     case 2:
-      OLEDPanel3(localIP, subnetMask, gatewayIP, NTPIP, signalStrength, previousMillis);
+      OLEDPanel3(localIP, subnetMask, gatewayIP, NTPIP, signalStrength, previousMillis, DP24);
       break;
   }
   display.display(); // Display everything held in buffer
@@ -544,7 +599,7 @@ void loop() {
         String request = DataClient.readStringUntil('\n');
         Serial.println("Request received: " + request);
         if (request == "REQUEST_DATA") {
-          String data = "§" + dateOnly + "," + timeOnly + "," + formattedC + "," + formattedOutC + "," + formattedLightSensorData + "," + formattedHumdiditySensor + "," + formattedOutHumdiditySensor + "," + formattedPressureSensor + "," + formattedMicrophoneSensor + "," + String(secondsOnline) + "<END>\n";
+          String data = "<START>" + dateOnly + "," + timeOnly + "," + formattedC + "," + formattedOutC + "," + formattedLightSensorData + "," + formattedHumdiditySensor + "," + formattedOutHumdiditySensor + "," + formattedPressureSensor + "," + formattedMicrophoneSensor + "," + String(secondsOnline) + "<END>";
           DataClient.print(data);
           Serial.print("Data sent to client: " + data);  // Debug statement
           break;  // Exit the loop after sending the data once
@@ -558,7 +613,6 @@ void loop() {
   WiFiClient WebClient = WebServer.available();
   if (WebClient) {
     Serial.println("New Web Client.");
-    matrix.loadFrame(LEDMATRIX_CLOUD_WIFI);
     while (WebClient.connected()) { // Keep connection open until client disconnects
       if (WebClient.available()) {
         int whiteLightness = map(analogRead(LightSensor), 50, 500, 10, 100);
@@ -1047,7 +1101,6 @@ void loop() {
     }
     WebClient.stop(); // Disconnect the client because all data has been sent
     Serial.println("Web Client disconnected.");
-    RandomStaticLoad();
     analogWrite(whiteLED, LOW);
     url = ""; // Empty out for next connection request
     referrer = ""; // Empty out for next connection request
