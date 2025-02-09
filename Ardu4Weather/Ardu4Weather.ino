@@ -77,6 +77,7 @@ float pressureReadings[NUM_READINGS]; // Array to store pressure readings
 int readingIndex = 0; // Keep track of the current position in the array
 long long unsigned DPPreviousMillis = 0;
 const int DPInterval = 500000;
+float deltaP = 0.0;
 const int wdtInterval = 60000; // Watchdog Timer Interval (60 seconds)
 
 // Initialisation of string variables used later, Commented variables are handled by cloud.
@@ -126,7 +127,9 @@ void setup() {
   pinMode(whiteLED, OUTPUT);
   Serial.begin(57600);
   Serial1.begin(57600);
-  Serial.println("*************** Ardu4Weather v0.5.0 - Commit 14 *******************");
+  Serial.println("*************** Ardu4Weather v0.25.2 - Commit 15 *******************");
+
+  // Initialize the OLED display
   display.cp437(true);
   if(!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) {   // Address 0x3C for 128x64
     Serial.println(F("SSD1306 allocation failed"));
@@ -135,28 +138,63 @@ void setup() {
   display.clearDisplay();
   display.setTextSize(1); 
   display.setTextColor(WHITE);
-  display.drawBitmap(0, 0, epd_bitmap_CompositeLogo, 128, 64, WHITE);
+  display.drawBitmap(0, 0, epd_bitmap_CompositeLogo, 128, 64, WHITE); // Draw the logo while setup is running
   display.display();
+
   NetworkChange(); // Connect to WiFi
+  if (WiFi.status() != WL_CONNECTED) { // If the WiFi connection fails
+    Serial.println("Failed to connect to WiFi");
+    display.clearDisplay();
+    display.setCursor(0, 16);
+    display.setTextSize(1);
+    display.print("Failed to connect to WiFi");
+    display.display();
+  }
   Serial.println("");
   Serial.print("Connected to WiFi. IP address: ");
   String localIP = WiFi.localIP().toString();
   Serial.println(localIP);
   WebServer.begin(); // Start website hosting server, port 8080
   DataServer.begin(); // Start data sending server, port 8081
+
+  // initialize DHT sensors
   dht.begin();
   dht2.begin();
+  if (isnan(dht.readTemperature()) || isnan(dht2.readTemperature())) { // If the DHT sensors fail to initialize
+    Serial.println("Failed to initialize DHT sensors");
+    display.clearDisplay();
+    display.setCursor(0, 16);
+    display.setTextSize(1);
+    display.print("Failed to initialize DHT sensors");
+    display.display();
+  }
+
+  // initialize RTC
   RTC.begin();
-  matrix.begin();
+  if (!RTC.isRunning()) {
+    Serial.println("Failed to initialize RTC");
+    display.clearDisplay();
+    display.setCursor(0, 16);
+    display.setTextSize(1);
+    display.print("Failed to initialize RTC");
+    display.display();
+    for (;;); // Don't proceed, loop forever
+  }
   timeClient.begin();
   timeClient.update();
-  //NTPIP = String(timeClient.getNTPserverIP());
+  // NTPIP = String(timeClient.getNTPserverIP());
   NTPIP = String("null"); // Set to null, as the NTP server IP is not used yet
   unixTime = timeClient.getEpochTime();
-  while (unixTime < 1000) { // If the unix time is less than 1000, it's not a valid time
+  while (unixTime < 1000)
+  { // If the unix time is less than 1000, it's not a valid time
     timeClient.update();
     unixTime = timeClient.getEpochTime();
     Serial.println("Failed to get proper unix time, refreshing.");
+    display.clearDisplay();
+    display.setCursor(0, 16);
+    display.setTextSize(1);
+    display.print("Failed to get proper unix time, refreshing.");
+    display.display();
     delay(200);
   }
   Serial.print("Unix Time: ");
@@ -167,15 +205,23 @@ void setup() {
   RTC.getTime(currentTime);
   Serial.print("RTC Time: ");
   Serial.println(currentTime);
-  if (!bmp.begin()) {
+
+  // initialize LED Matrix
+  matrix.begin();
+
+  // initialize BMP sensor
+  if (!bmp.begin()) { // If the BMP sensor fails to initialize
     Serial.println("Could not find a valid BMP085/BMP180 sensor, check wiring!");
     display.clearDisplay();
-    display.setCursor(0, 16); 
+    display.setCursor(0, 16);
+    display.setTextSize(1);
     display.print("Could not find a valid BMP085/BMP180 sensor, check wiring!");
     display.display();
-    for(;;); // Don't proceed, loop forever
+    for (;;); // Don't proceed, loop forever
   }
-  if(WDT.begin(wdtInterval)) {
+
+  // initialize watchdog timer
+  if (WDT.begin(wdtInterval)) { // If the watchdog timer initializes successfully
     Serial.print("WDT interval: ");
     WDT.refresh();
     Serial.print(WDT.getTimeout());
@@ -186,15 +232,19 @@ void setup() {
     Serial.println("Error initializing watchdog");
     display.clearDisplay();
     display.setCursor(0, 16); 
+    display.setTextSize(1);
     display.print("Error initializing watchdog");
     display.display();
     for (;;); // Don't proceed, loop forever
   }
-  //RandomStaticLoad();
+
+  //RandomStaticLoad(); // Load a random static image onto the LED Matrix
   initProperties();
   ArduinoCloud.begin(ArduinoIoTPreferredConnection); // Connect to arduino cloud
   setDebugMessageLevel(2); // Set debug verbosity 0-4
   ArduinoCloud.printDebugInfo(); // Print to cloud console
+  Serial.println("Setup Complete");
+  display.clearDisplay();
 }
 
 // NetworkChange, If the network disconnects, it reconnects to another predefined network
@@ -207,7 +257,7 @@ void NetworkChange() {
         Serial.println("Changed to network 1.");
         display.setTextSize(2);
         display.setCursor(0, 30);
-        display.write(0xEA);
+        display.write(0xAE);
         display.display();
         delay(100);
         break;
@@ -216,7 +266,7 @@ void NetworkChange() {
         Serial.println("Changed to network 2.");
         display.setTextSize(2);
         display.setCursor(0, 30);
-        display.write(0xEF);
+        display.write(0xAF);
         display.display();
         delay(100);
         break;
@@ -226,7 +276,7 @@ void NetworkChange() {
 
 // RandomStaticLoad, Loads a random predefined image onto the Arduino R4 WiFi led matrix
 //const int StaticAnimationSelection = random(0,12);
-const int StaticAnimationSelection = 3;
+const int StaticAnimationSelection = 3; // For testing
 void RandomStaticLoad() {
   switch (StaticAnimationSelection) {
     case 0:
@@ -397,8 +447,8 @@ void LiveThermomiter() {
 void NTPSync() {
   currentMillis = millis();
   if (currentMillis - previousMillis >= interval) {
-    previousMillis = currentMillis;
-    if (timeClient.update()) {
+    DPPreviousMillis = currentMillis;
+    if (timeClient.update()) { // If the NTP update is successful
       int whiteLightness = map(analogRead(LightSensor), 50, 500, 10, 100);
       analogWrite(whiteLED, whiteLightness);
       unixTime = timeClient.getEpochTime();
@@ -420,14 +470,10 @@ float DeltaPressure24() {
     float currentPressure = bmp.readPressure(); // Get current pressure reading
     pressureReadings[readingIndex] = currentPressure;   // Store the new reading in the array
     readingIndex = (readingIndex + 1) % NUM_READINGS; // Wrap around the array
-    if (readingIndex >= NUM_READINGS) { // Only calculate after 24 hours of data
-      int oldestIndex = (readingIndex + 1) % NUM_READINGS; // Index of the oldest reading
-      float deltaP = currentPressure - pressureReadings[oldestIndex]; 
-      return deltaP;
-    } else {
-      return 0.0;
-    }
+    int oldestIndex = (readingIndex + NUM_READINGS - 1) % NUM_READINGS; // Index of the oldest reading
+    float deltaP = currentPressure - pressureReadings[oldestIndex]; // Calculate the change in pressure
   }
+  return deltaP;
 }
 
 // OLEDHeader, inputs the header of the oled to buffer for displaying, shows some symbols and the current ntp date and time
@@ -444,7 +490,7 @@ void OLEDHeader(String dateOnly, String timeOnly) {
 }
 
 // OLEDPanel1, Shows a few different readings from the sensors without having to access the website, useful for debugging.
-void OLEDPanel1(String formattedC, String formattedLightSensorData, String formattedHumdiditySensor, String formattedPressureSensor, String formattedMicrophoneSensor, String secondsOnline) {
+void OLEDPanel1(String formattedC, String formattedLightSensorData, String formattedHumdiditySensor, String formattedPressureSensor, String formattedMicrophoneSensor, String hoursOnline) {
   display.setTextSize(1);
   display.setCursor(110, 16);
   display.print("1/3");
@@ -461,11 +507,11 @@ void OLEDPanel1(String formattedC, String formattedLightSensorData, String forma
   display.setCursor(0, 48); 
   display.println("Noise: " + formattedMicrophoneSensor + " U");
   display.setCursor(0, 56); 
-  display.println("Time: " + secondsOnline + " Secs");
+  display.println("Hours: " + hoursOnline + "H");
 }
 
 // OLEDPanel2, Shows a few different more readings that couldnt fit on 1 from the sensors without having to access the website, useful for debugging.
-void OLEDPanel2(String formattedOutC, String formattedOutHumdiditySensor, String formattedMagnetSensor, String altitude, String hoursOnline, String daysOnline) {
+void OLEDPanel2(String formattedOutC, String formattedOutHumdiditySensor, String formattedMagnetSensor, String altitude, String daysOnline) {
   display.setTextSize(1);
   display.setCursor(110, 16);
   display.print("2/3");
@@ -480,9 +526,8 @@ void OLEDPanel2(String formattedOutC, String formattedOutHumdiditySensor, String
   display.setCursor(0, 40); 
   display.println("Altitude: " + altitude + "m");
   display.setCursor(0, 48); 
-  display.println("Hours: " + hoursOnline + "H");
-  display.setCursor(0, 56); 
   display.println("Days: " + daysOnline + "D");
+  display.setCursor(0, 56); 
 }
 
 // OLEDPanel3, Shows a few different network statistics, useful for debugging
@@ -579,10 +624,10 @@ void loop() {
   OLEDHeader(dateOnly, timeOnly);
   switch (OLEDPanel) {
     case 0:
-      OLEDPanel1(formattedC, formattedLightSensorData, formattedHumdiditySensor, formattedPressureSensor, formattedMicrophoneSensor, secondsOnline);
+      OLEDPanel1(formattedC, formattedLightSensorData, formattedHumdiditySensor, formattedPressureSensor, formattedMicrophoneSensor, hoursOnline);
       break;
     case 1:
-      OLEDPanel2(formattedOutC, formattedOutHumdiditySensor, formattedMagnetSensor, altitude, hoursOnline, daysOnline);
+      OLEDPanel2(formattedOutC, formattedOutHumdiditySensor, formattedMagnetSensor, altitude, daysOnline);
       break;
     case 2:
       OLEDPanel3(localIP, subnetMask, gatewayIP, NTPIP, signalStrength, previousMillis, DP24);
@@ -591,8 +636,8 @@ void loop() {
   display.display(); // Display everything held in buffer
 
   // CSV Server Data Function, When a connection is made, data is sent. a partner python script saves the data to a CSV file.
-  WiFiClient DataClient = DataServer.available();
-  if (DataClient) {
+  WiFiClient DataClient = DataServer.available(); // Check for incoming connections
+  if (DataClient) { // If a client connects
     Serial.println("New Data Client.");
     while (DataClient.connected()) {
       if (DataClient.available()) {
@@ -610,8 +655,8 @@ void loop() {
   }
   
   // Website Function
-  WiFiClient WebClient = WebServer.available();
-  if (WebClient) {
+  WiFiClient WebClient = WebServer.available(); // Check for incoming connections
+  if (WebClient) { // If a client connects
     Serial.println("New Web Client.");
     while (WebClient.connected()) { // Keep connection open until client disconnects
       if (WebClient.available()) {
@@ -856,7 +901,6 @@ void loop() {
             WebClient.print(" dB</span></div>");
             WebClient.print("</div>");
             WebClient.print("<body><div class='sidebar-container'><h1>Side Container</h1>");
-            WebClient.print("<p>https://github.com/Aprocryphan/Ardu4Weather</p>");
             WebClient.print("</div>");
             // Javascript for button
             WebClient.print("<script>");
@@ -879,8 +923,10 @@ void loop() {
             WebClient.print("});");
             WebClient.print("</script>");
             WebClient.print("<div class='footer-image'><img src='https://i.imgur.com/mlL3Fiw.png' alt='Ardu4Weather Logo'></div></div>");
-            //WebClient.print("<span class='material-symbols-outlined'>all_inclusive</span>");
-            WebClient.print("<footer><p>This is a website and wether station completely hosted and controlled on my Arduino R4 WiFi! - CS</p></footer>");
+            WebClient.print("<footer><p>This is a website and wether station completely hosted and controlled on my Arduino R4 WiFi! - CS<br>");
+            WebClient.print("<a href='https://github.com/Aprocryphan/Ardu4Weather' style='text-decoration: underline; display: flex; align-items: center;' target='_blank'>");
+            WebClient.print("<img src='https://github.githubassets.com/images/modules/logos_page/GitHub-Mark.png' alt='GitHub Logo' style='width: 20px; height: 20px; margin-right: 5px;'>");
+            WebClient.print("GitHub</a></p></footer>");
             WebClient.print("</body></html>");
             WebClient.flush();
             break;
@@ -941,7 +987,7 @@ void loop() {
               WebClient.print("</div></div>");
               WebClient.print("<h2>Microphone Sensor Image</h2>");
               WebClient.print("<div class='image-text-pair'><img src=\'https://i.imgur.com/541JSSP.jpeg' alt=\'Microphone Sensor Image'><div class='image-text'>");
-              WebClient.print("<p>Not quite sure how this one works yet but the analog output is connected to analog pin A3</p>");
+              WebClient.print("<p>MAX4466 Electret Microphone Amplifier for noise levels</p>");
               WebClient.print("</div></div>");
               WebClient.print("<h2>Pressure Sensor Image</h2>");
               WebClient.print("<div class='image-text-pair'><img src=\'https://i.imgur.com/uKWry8u.jpeg' alt=\'Pressure Sensor Image'><div class='image-text'>");

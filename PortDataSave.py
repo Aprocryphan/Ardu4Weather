@@ -1,8 +1,10 @@
 import socket
 import time
+from datetime import datetime
 
 # --- Configuration ---
 ARDUINO_IP = '192.168.1.106'  # IP address of the Arduino
+#ARDUINO_IP = '10.174.50.63'  # IP address of the Arduino
 PORT = 8081  # Port to connect to
 FILE_PATH = "HistoricalWeatherData.csv"  # Path to the CSV file
 END_MARKER = "<END>"  # End marker to signal the end of data
@@ -14,11 +16,9 @@ def request_data():
             client_socket.settimeout(10)  # Set a timeout for the connection
             client_socket.connect((ARDUINO_IP, PORT))
             print(f"\033[0;92mConnected to Arduino at {ARDUINO_IP}:{PORT}")
-            
             # Send a request to the Arduino
             client_socket.sendall(b"REQUEST_DATA\n")
-            print("Request sent to Arduino.")
-            
+            print(f"Request sent to Arduino. {datetime.now().strftime('%H:%M:%S')}")
             # Receive the data from the Arduino
             data = ""
             while True:
@@ -34,17 +34,14 @@ def request_data():
                 except socket.timeout:
                     print("\033[0;31mSocket timeout, no more data.")
                     break
-            
             data = data.strip()
             print(f"\033[0;94mReceived data: {data}")  # Debug statement
-            
-            if data.startswith("§"):
-                truncated_data = data[1:]  # Remove the delimiter
+            if data.startswith("<START>"):
+                truncated_data = data[7:]  # Remove the delimiter
                 with open(FILE_PATH, "a", newline='') as file:
                     file.write(f"{truncated_data}\n")
                     file.flush()
                 print(f"\033[0;92mData saved: {truncated_data}")
-            
             # Close the connection explicitly
             client_socket.close()
             print("\033[0;93mConnection closed.\n")
@@ -55,5 +52,7 @@ def request_data():
 
 if __name__ == "__main__":
     while True:
-        request_data()
-        time.sleep(600) # Wait for 10 minutes before requesting data again
+        current_time = datetime.now()
+        if current_time.minute % 10 == 0: # Save data every 10 minutes
+            request_data()
+            time.sleep(61)  # Wait for 1 minute to avoid multiple requests
