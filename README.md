@@ -68,7 +68,8 @@ Here are some links to certain components I use\
 Contributions are welcome! Feel free to open issues or submit pull requests.
 
 ## License
-This project is licensed under the MIT License.
+This project is licensed under a modified version of the MIT License.\
+Please read the licence file for more details.\
 https://opensource.org/license/mit
 
 Icons Used For Website Lisence
