@@ -79,7 +79,6 @@ int readingIndex = 0; // Keep track of the current position in the array
 long long unsigned DPPreviousMillis = 0;
 const int DPInterval = 500000;
 float deltaP = 0.0;
-const int wdtInterval = 60000; // Watchdog Timer Interval (60 seconds)
 
 // Initialisation of string variables used later, Commented variables are handled by cloud.
 String formattedTime = "null";
@@ -128,7 +127,7 @@ void setup() {
   pinMode(whiteLED, OUTPUT);
   Serial.begin(57600);
   Serial1.begin(57600);
-  Serial.println("*************** Ardu4Weather v0.25.2 - Commit 15 *******************");
+  Serial.println("\n*************** Ardu4Weather v0.25.3 - Commit 17 *******************");
 
   // Initialize the OLED display
   display.cp437(true);
@@ -151,7 +150,6 @@ void setup() {
     display.print("Failed to connect to WiFi");
     display.display();
   }
-  Serial.println("");
   Serial.print("Connected to WiFi. IP address: ");
   String localIP = WiFi.localIP().toString();
   Serial.println(localIP);
@@ -172,7 +170,7 @@ void setup() {
 
   // initialize RTC
   RTC.begin();
-  if (!RTC.isRunning()) {
+  if (!RTC.begin()) {
     Serial.println("Failed to initialize RTC");
     display.clearDisplay();
     display.setCursor(0, 16);
@@ -217,24 +215,6 @@ void setup() {
     display.setCursor(0, 16);
     display.setTextSize(1);
     display.print("Could not find a valid BMP085/BMP180 sensor, check wiring!");
-    display.display();
-    for (;;); // Don't proceed, loop forever
-  }
-
-  // initialize watchdog timer
-  if (WDT.begin(wdtInterval)) { // If the watchdog timer initializes successfully
-    Serial.print("WDT interval: ");
-    WDT.refresh();
-    Serial.print(WDT.getTimeout());
-    WDT.refresh();
-    Serial.println(" ms");
-    WDT.refresh();
-  } else {
-    Serial.println("Error initializing watchdog");
-    display.clearDisplay();
-    display.setCursor(0, 16); 
-    display.setTextSize(1);
-    display.print("Error initializing watchdog");
     display.display();
     for (;;); // Don't proceed, loop forever
   }
@@ -572,7 +552,6 @@ int MicLevels() {
 
 void loop() {
   // Put continuous updates here
-  WDT.refresh();
   LiveThermomiter();
   NetworkChange();
   NTPSync();
