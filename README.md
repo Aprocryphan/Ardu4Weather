@@ -25,6 +25,16 @@ Components Used:
 * Photoresistor for light level detection
 * Various LEDs for visual indicators
 
+## Versions
+1. Base Verion (Actively being developed)\
+This is the main version of this project, it serves you the webpage and takes in weather data.
+2. A4WLite\
+This is a lighter verison, it doesn't have website capabilities but it syncs with the arduino cloud and takes in weather data.
+3. A4WLiteGHome\
+This version is almost an exact copy of A4WLite but it uses google home compatable variables instead.
+4. IoT+Website\
+This version attempts to combine website functionality with the arduino cloud, this creates some hanging problems so i won't be maintaining this as much as the main branch.
+
 ## Installation
 **Disclaimer: The vast majority of features used in this project require either the Arduino UNO R4 WiFi or the Arduino UNO R4 Minima**
 1. Clone the repository:
