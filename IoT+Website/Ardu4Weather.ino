@@ -1,3 +1,4 @@
+#include "thingProperties.h"
 #include "arduino_secrets.h"
 #include "A4WBitmaps.h"
 #include "ANSICodes.h"
@@ -83,10 +84,10 @@ float deltaP = 0.0;
 String formattedTime = "null";
 String dateOnly = "null";
 String timeOnly = "null";
-String formattedC = "null";
+//String formattedC = "null";
 String formattedLightSensorData = "null";
-String formattedHumdiditySensor = "null";
-String formattedPressureSensor = "null";
+//String formattedHumdiditySensor = "null";
+//String formattedPressureSensor = "null";
 String formattedMicrophoneSensor = "null";
 String secondsOnline = "null";
 String hoursOnline = "null";
@@ -95,8 +96,8 @@ String localIP = "null";
 String subnetMask = "null";
 String gatewayIP = "null";
 String signalStrength = "null";
-String formattedOutC = "null";
-String formattedOutHumdiditySensor = "null";
+//String formattedOutC = "null";
+//String formattedOutHumdiditySensor = "null";
 String formattedMagnetSensor = "null";
 String altitude = "null";
 String NTPIP = "null";
@@ -219,6 +220,10 @@ void setup() {
   }
 
   //RandomStaticLoad(); // Load a random static image onto the LED Matrix
+  initProperties();
+  ArduinoCloud.begin(ArduinoIoTPreferredConnection); // Connect to arduino cloud
+  setDebugMessageLevel(2); // Set debug verbosity 0-4
+  ArduinoCloud.printDebugInfo(); // Print to cloud console
   Serial.println(Cgreen + "Setup Complete" + Creset);
   display.clearDisplay();
 }
@@ -552,6 +557,7 @@ void loop() {
   //DeltaPressure24();
   //float DP24 = DeltaPressure24();
   float DP24 = 0.0;
+  ArduinoCloud.update(); // causes arduino to hang when website requested
   currentMillis = millis();
 
   RTCTime currentTime;

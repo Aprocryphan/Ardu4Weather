@@ -1,3 +1,5 @@
+# Description: This script reads data from the Arduino serial port and prints it to the console with a timestamp.
+# Allows ANSI escape codes for colored text to properly render in the console.
 import serial
 import time 
 import datetime
