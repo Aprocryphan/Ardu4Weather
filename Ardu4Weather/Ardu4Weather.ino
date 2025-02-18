@@ -22,9 +22,6 @@
 #define SCREEN_HEIGHT 64 // OLED display height, in pixels
 #define OLED_RESET 4 // Reset pin # (or -1 if sharing Arduino reset pin)
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET); // Declares the OLED display
-IPAddress local_IP(192, 168, 1, 106); // Redundant
-IPAddress gateway(192, 168, 1, 1); // Redundant
-IPAddress subnet(255, 255, 255, 0); // Redundant
 WiFiServer WebServer(8080); // Defines the port that the web server is hosted on
 WiFiServer DataServer(8081); // Defines the port that the data server is hosted on
 WiFiUDP ntpUDP; // A UDP instance to let the NTPClient communicate over
@@ -57,33 +54,33 @@ const int LightSensor = A3;
 //const int Placeholder = A4;
 //const int Placeholder = A5;
 
-float offset = 0; // Offset For Temp Sensor (adjust as needed)
-float gain = 1.00; // Gain For Temp Sensor (adjust as needed)
+const float offset = 0.0; // Offset For Temp Sensor (adjust as needed)
+const float gain = 1.00; // Gain For Temp Sensor (adjust as needed)
 float Temp = 0.0;
-float TempAvarage = 0.0; // Stores average temperature
-float LightAvarage = 0.0; // Stores average light level
-const float seaLevelPressure = 101325;
-int interval = 300000; // Referesh interval for NTPUpdate function
-long long unsigned currentMillis = 0; // for all millis functions
+float TempAverage = 0.0; // Stores average temperature
+float LightAverage = 0.0; // Stores average light level
+const float seaLevelPressure = 101325.0;
 long long unsigned previousMillis = 0; // for NTPUpdate function
 int network = -1; // Initial network connection attempt for switch case
 long long unsigned OLEDPreviousMillis = 0; // For OLED Panel
-int OLEDInterval = 5000; // For OLED Panel
-int OLEDPanel = 0; // Initial OLED Panel
+int OLEDPanel = -1; // Initial OLED Panel
 const int sampleWindow = 50;  // Sample window width in mS (50 mS = 20Hz)
 unsigned int sample; // Sample value from the pressure sensor
 const int NUM_READINGS = 288; // 24 hours of data, one reading every 5 minutes
 float pressureReadings[NUM_READINGS]; // Array to store pressure readings
 int readingIndex = 0; // Keep track of the current position in the array
 long long unsigned DPPreviousMillis = 0;
-const int DPInterval = 500000;
 float deltaP = 0.0;
+float DP24 = 0.0;
+int SensorPreviousMillis = 0;
 
 // Initialisation of string variables used later, Commented variables are handled by cloud.
 String formattedTime = "null";
 String dateOnly = "null";
 String timeOnly = "null";
 String formattedC = "null";
+String formattedF = "null";
+String formattedOutF = "null";
 String formattedLightSensorData = "null";
 String formattedHumdiditySensor = "null";
 String formattedPressureSensor = "null";
@@ -102,6 +99,14 @@ String altitude = "null";
 String NTPIP = "null";
 String url = "";
 String referrer = "";
+String inTempDisplacement = "0";
+String outTempDisplacement = "0";
+String lightDisplacement = "0";
+String inHumidityDisplacement = "0";
+String outHumidityDisplacement = "0";
+String pressureDisplacement = "0";
+String altitudeDisplacement = "0";
+String noiseDisplacement = "0";
 // ⚡☔☁️🌨️🌧️🌩️⛈️🌦️🌥️⛅🌤️🌡️🔥❄️🌫️🌙☀️
 /*
 #333333
@@ -235,6 +240,9 @@ void NetworkChange() {
         display.setCursor(0, 30);
         display.write(0xAE);
         display.display();
+        localIP = WiFi.localIP().toString();
+        subnetMask = WiFi.subnetMask().toString();
+        gatewayIP = WiFi.gatewayIP().toString();
         delay(100);
         break;
       case 1:
@@ -244,6 +252,9 @@ void NetworkChange() {
         display.setCursor(0, 30);
         display.write(0xAF);
         display.display();
+        localIP = WiFi.localIP().toString();
+        subnetMask = WiFi.subnetMask().toString();
+        gatewayIP = WiFi.gatewayIP().toString();
         delay(100);
         break;
     }
@@ -302,7 +313,7 @@ float ReadTempC() {
   return Temp;
 }
 
-// calculateAverage, A modular function that calculates the avarage from a number of samples
+// calculateAverage, A modular function that calculates the average from a number of samples
 template <typename T>
 T calculateAverage(T value, unsigned long interval, unsigned long &lastUpdateTime, T &sum, int &count, int &samples) { 
   unsigned long currentTime = millis();
@@ -382,7 +393,7 @@ void LiveThermomiter() {
   int samples = 250;
   float averageLight = calculateAverage(currentLight, averagingInterval, lastTempUpdate, sumTemp, tempCount, samples);
   int PWMLightness = map(averageLight, 50, 500, 10, 150);
-  //Serial.print("Avarage Value: ");
+  //Serial.print("Average Value: ");
   //Serial.println(averageLight);
   //Serial.print("Current Value: ");
   //Serial.println(analogRead(LightSensor));
@@ -421,8 +432,8 @@ void LiveThermomiter() {
 
 // NTPSync, Syncs the RTC module with the time fetched from the NTP server every 5 mins, helps account for RTC module drift.
 void NTPSync() {
-  if (currentMillis - previousMillis >= interval) {
-    previousMillis = currentMillis;
+  if (millis() - previousMillis >= 300000) {
+    previousMillis = millis();
     if (timeClient.update()) { // If the NTP update is successful
       int whiteLightness = map(analogRead(LightSensor), 50, 500, 10, 100);
       analogWrite(whiteLED, whiteLightness);
@@ -440,8 +451,8 @@ void NTPSync() {
 }
 
 float DeltaPressure24() {
-  if (currentMillis - DPPreviousMillis >= DPInterval) {
-    previousMillis = currentMillis;
+  if (millis() - DPPreviousMillis >= 500000) {
+    previousMillis = millis(); // Fixing to use the current millis() for accurate timing
     float currentPressure = bmp.readPressure(); // Get current pressure reading
     pressureReadings[readingIndex] = currentPressure;   // Store the new reading in the array
     readingIndex = (readingIndex + 1) % NUM_READINGS; // Wrap around the array
@@ -544,54 +555,49 @@ int MicLevels() {
   return peakToPeak;
 }
 
+int DebugMillis = 0;
 void loop() {
+  //DebugMillis = millis(); // Reset the debug timer
   // Put continuous updates here
   LiveThermomiter();
   NetworkChange();
   NTPSync();
   //DeltaPressure24();
   //float DP24 = DeltaPressure24();
-  float DP24 = 0.0;
-  currentMillis = millis();
 
+  // Time and Date Data
   RTCTime currentTime;
   RTC.getTime(currentTime);
   String stringTime = String(currentTime);
   int tPosition = stringTime.indexOf('T');
   timeOnly = stringTime.substring(tPosition + 1);
   dateOnly = stringTime.substring(0, tPosition);
-  formattedTime = String(dateOnly + " / " + timeOnly);
-  formattedC = String(dht.readTemperature()); 
-  String formattedF = String((dht.readTemperature() * 9/5) + 32);
-  formattedOutC = String(dht2.readTemperature()); 
-  String formattedOutF = String((dht2.readTemperature() * 9/5) + 32);
-  formattedLightSensorData = String((analogRead(LightSensor) * 2)); 
-  formattedHumdiditySensor = String(dht.readHumidity());
-  formattedOutHumdiditySensor = String(dht2.readHumidity());
-  float pressure = bmp.readPressure();
-  formattedPressureSensor = String(pressure / 100);
-  formattedMicrophoneSensor = String(MicLevels());
-  formattedMagnetSensor = String(digitalRead(magneticSensor) == 1 ? 0 : 1);
-  altitude = String(bmp.readAltitude(seaLevelPressure));
-  String secondsOnline = String((millis() / 1000));
-  String hoursOnline = String(float(millis() / 3600000.0));
-  String daysOnline = String(float(millis() / 86400000.0));
-  String inTempDisplacement = String(constrain((map(dht.readTemperature(),-5,30,-50,13300)),-50,13300)); // Displacement for the indicators on the bars, maps and constrains input between -50 and 13300
-  String outTempDisplacement = String(constrain((map(dht2.readTemperature(),-5,30,-50,13300)),-50,13300));
-  String lightDisplacement = String(constrain((map((analogRead(LightSensor) * 2),0,1000,-50,13300)),-50,13300));
-  String inHumidityDisplacement = String(constrain((map(dht.readHumidity(),0,100,-50,13300)),-50,1330));
-  String outHumidityDisplacement = String(constrain((map(dht2.readHumidity(),0,100,-50,13300)),-50,13300));
-  String pressureDisplacement = String(constrain((map((pressure / 100),980,1030,-50,13300)),-50,13300));
-  String altitudeDisplacement = String(constrain((map(bmp.readAltitude(seaLevelPressure),0,3000,-50,13300)),-50,13300));
-  String noiseDisplacement = String(constrain((map((MicLevels()),10,700,-50,13300)),-50,13300));
-  localIP = WiFi.localIP().toString();
-  subnetMask = WiFi.subnetMask().toString();
-  gatewayIP = WiFi.gatewayIP().toString();
-  signalStrength = String(WiFi.RSSI());
+  secondsOnline = String((millis() / 1000));
+  hoursOnline = String(float(millis() / 3600000.0));
+  daysOnline = String(float(millis() / 86400000.0));
+
+  // Sensor Data
+  if (millis() - SensorPreviousMillis >= 5000) {
+    SensorPreviousMillis = millis();
+    formattedTime = String(dateOnly + " / " + timeOnly);
+    formattedC = String(dht.readTemperature()); 
+    formattedF = String((dht.readTemperature() * 9/5) + 32);
+    formattedOutC = String(dht2.readTemperature()); 
+    formattedOutF = String((dht2.readTemperature() * 9/5) + 32);
+    formattedLightSensorData = String((analogRead(LightSensor) * 2)); 
+    formattedHumdiditySensor = String(dht.readHumidity());
+    formattedOutHumdiditySensor = String(dht2.readHumidity());
+    float pressure = bmp.readPressure();
+    formattedPressureSensor = String(pressure / 100);
+    formattedMicrophoneSensor = String(MicLevels());
+    formattedMagnetSensor = String(digitalRead(magneticSensor) == 1 ? 0 : 1);
+    altitude = String(bmp.readAltitude(seaLevelPressure));
+    signalStrength = String(WiFi.RSSI());
+  }
 
   // OLED Data Display Function
-  if (currentMillis - OLEDPreviousMillis >= OLEDInterval) {
-    OLEDPreviousMillis = currentMillis;
+  if (millis() - OLEDPreviousMillis >= 5000) {
+    OLEDPreviousMillis = millis();
     OLEDPanel = (OLEDPanel + 1) % 3;
   }
   display.clearDisplay();
@@ -652,6 +658,18 @@ void loop() {
           Serial.println(url + Creset);
           if (url == "/") {
             Serial.println(Cblue + "Main Page Requested" + Creset);
+            float pressure = bmp.readPressure();
+            inTempDisplacement = String(constrain((map(dht.readTemperature(),-5,30,0,100)),0,100)); // Displacement for the indicators on the bars, maps and constrains input between -50 and 13300
+            outTempDisplacement = String(constrain((map(dht2.readTemperature(),-5,30,0,100)),0,100));
+            String lightDisplacement = String(constrain((map((analogRead(LightSensor) * 2),0,1000,0,100)),0,100));
+            inHumidityDisplacement = String(constrain((map(dht.readHumidity(),0,100,0,100)),0,100));
+            outHumidityDisplacement = String(constrain((map(dht2.readHumidity(),0,100,0,100)),0,100));
+            pressureDisplacement = String(constrain((map((pressure / 100),980,1030,0,100)),0,100));
+            String altitudeDisplacement = String(constrain((map(bmp.readAltitude(seaLevelPressure),0,3000,0,100)),0,100));
+            noiseDisplacement = String(constrain((map((MicLevels()),10,700,0,100)),0,100));
+            if (isnan(dht2.readTemperature())) { // If the outdoor sensor is disconnected indicator is at 0
+              outTempDisplacement = "-5";
+            }
             WebClient.print("HTTP/1.1 200 OK\r\n");
             WebClient.print("Content-Type: text/html; charset=utf-8\r\n");
             WebClient.print("X-Content-Type-Options: nosniff\r\n");
@@ -669,13 +687,11 @@ void loop() {
             WebClient.print("<link href='https://fonts.googleapis.com/css2?family=Funnel+Display:wght@300..800&display=swap' rel='stylesheet'>");
             WebClient.print("<link rel='stylesheet' href='https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&icon_names=all_inclusive' />");
             WebClient.print("<link rel='icon' href='https://i.imgur.com/mlL3Fiw.png'>");
-            WebClient.print("<nav><ul><li><a href='/'>Home</a></li>");
-            WebClient.print("<li><a href='/about'>About</a></li>");
-            WebClient.print("<li><a href='/data'>Historical Data</a></li></ul></nav>");
             WebClient.print("<style>");
-            WebClient.print("nav { background-color: #434b4f; padding: 10px 0; transition-duration: 0.4s; font-size: 16px;}");
-            WebClient.print("nav ul { list-style: none; margin: 0; padding: 0; text-align: center; }");
-            WebClient.print("nav li { display: inline-block; margin: 0 15px; /* Spacing between navigation items */ }");
+            WebClient.print("nav { background-color: #434b4f; transition-duration: 0.4s; font-size: 16px; display: flex;  align-items: center; padding: 10px 0; position: relative; }");
+            WebClient.print("nav:hover { background-color: #53636A; transition-duration: 0.4s; font-size: 18px; display: flex; align-items: center; position: relative; }");
+            WebClient.print("nav ul { list-style: none; margin: 0; padding: 0; display: flex; justify-content: center; align-items: center; flex-grow: 1; }");
+            WebClient.print("nav li { display: inline-block; margin: 0 15px; }");
             WebClient.print("nav a { color: #ffffff; text-decoration: none; }");
             WebClient.print("nav a:hover { color: #ccc; }");
             WebClient.print("body { background: linear-gradient(0deg, hsla(198, 18%, 45%, 1) 0%, hsla(197, 66%, 90%, 1) 100%); font-family: 'Funnel Display', serif; font-weight: 300; margin: 0; /* Remove default margins */ display: flex; flex-direction: column; min-height: 100vh; /* Ensure full viewport height */ transition-duration: 0.4s; }");
@@ -702,37 +718,25 @@ void loop() {
             WebClient.print(".humid-slider-bar { width: 100%; height: 5px; background: linear-gradient(90deg,hsla(0, 0%, 100%, 1) 0%, hsla(198, 20%, 54%, 1) 100%); border-radius: 5px; margin-bottom: 30px; position: relative; }");
             WebClient.print(".altitude-slider-bar { width: 100%; height: 5px; background: linear-gradient(90deg, hsla(198, 20%, 54%, 1) 0%, hsla(0, 0%, 100%, 1) 100%); border-radius: 5px; margin-bottom: 30px; position: relative; }");
             WebClient.print(".noise-slider-bar { width: 100%; height: 5px; background: linear-gradient(90deg,hsla(0, 0%, 100%, 1) 0%, hsla(358, 40%, 54%, 1) 100%); border-radius: 5px; margin-bottom: 30px; position: relative; }");
-            WebClient.print(".in-temp-indicator { position: absolute; transform: translate(");
-            WebClient.print(inTempDisplacement);
-            WebClient.print("%, -40%); width: 6px; height: 20px; background-color: white; box-shadow: 0 0 2px rgba(0, 0, 0, 0.5); border-radius: 2px; }");
-            WebClient.print(".out-temp-indicator { position: absolute; transform: translate(");
-            WebClient.print(outTempDisplacement);
-            WebClient.print("%, -40%); width: 6px; height: 20px; background-color: white; box-shadow: 0 0 2px rgba(0, 0, 0, 0.5); border-radius: 2px; }");
-            WebClient.print(".light-indicator { position: absolute; transform: translate(");
-            WebClient.print(lightDisplacement);
-            WebClient.print("%, -40%); width: 6px; height: 20px; background-color: white; box-shadow: 0 0 2px rgba(0, 0, 0, 0.5); border-radius: 2px; }");
-            WebClient.print(".in-humidity-indicator { position: absolute; transform: translate(");
-            WebClient.print(inHumidityDisplacement);
-            WebClient.print("%, -40%); width: 6px; height: 20px; background-color: white; box-shadow: 0 0 2px rgba(0, 0, 0, 0.5); border-radius: 2px; }");
-            WebClient.print(".out-humidity-indicator { position: absolute; transform: translate(");
-            WebClient.print(outHumidityDisplacement);
-            WebClient.print("%, -40%); width: 6px; height: 20px; background-color: white; box-shadow: 0 0 2px rgba(0, 0, 0, 0.5); border-radius: 2px; }");
-            WebClient.print(".pressure-indicator { position: absolute; transform: translate(");
-            WebClient.print(pressureDisplacement);
-            WebClient.print("%, -40%); width: 6px; height: 20px; background-color: white; box-shadow: 0 0 2px rgba(0, 0, 0, 0.5); border-radius: 2px; }");
-            WebClient.print(".altitude-indicator { position: absolute; transform: translate(");
-            WebClient.print(altitudeDisplacement);
-            WebClient.print("%, -40%); width: 6px; height: 20px; background-color: white; box-shadow: 0 0 2px rgba(0, 0, 0, 0.5); border-radius: 2px; }");
-            WebClient.print(".noise-indicator { position: absolute; transform: translate(");
-            WebClient.print(noiseDisplacement);
-            WebClient.print("%, -40%); width: 6px; height: 20px; background-color: white; box-shadow: 0 0 2px rgba(0, 0, 0, 0.5); border-radius: 2px; }");
-            WebClient.print(".footer-image img { max-width: 7%; height: auto; display: block; margin: 20px auto; }");
+            WebClient.print(".in-temp-indicator { position: absolute; width: 6px; height: 20px; background-color: white; box-shadow: 0 0 2px rgba(0, 0, 0, 0.5); border-radius: 2px; top: -7px; }");
+            WebClient.print(".out-temp-indicator { position: absolute; width: 6px; height: 20px; background-color: white; box-shadow: 0 0 2px rgba(0, 0, 0, 0.5); border-radius: 2px; top: -7px;}");
+            WebClient.print(".light-indicator { position: absolute; width: 6px; height: 20px; background-color: white; box-shadow: 0 0 2px rgba(0, 0, 0, 0.5); border-radius: 2px; top: -7px; }");
+            WebClient.print(".in-humidity-indicator { position: absolute; width: 6px; height: 20px; background-color: white; box-shadow: 0 0 2px rgba(0, 0, 0, 0.5); border-radius: 2px; top: -7px;}");
+            WebClient.print(".out-humidity-indicator { position: absolute; width: 6px; height: 20px; background-color: white; box-shadow: 0 0 2px rgba(0, 0, 0, 0.5); border-radius: 2px; top: -7px; }");
+            WebClient.print(".pressure-indicator { position: absolute; width: 6px; height: 20px; background-color: white; box-shadow: 0 0 2px rgba(0, 0, 0, 0.5); border-radius: 2px; top: -7px; }");
+            WebClient.print(".altitude-indicator { position: absolute; width: 6px; height: 20px; background-color: white; box-shadow: 0 0 2px rgba(0, 0, 0, 0.5); border-radius: 2px; top: -7px; }");
+            WebClient.print(".noise-indicator { position: absolute; width: 6px; height: 20px; background-color: white; box-shadow: 0 0 2px rgba(0, 0, 0, 0.5); border-radius: 2px; top: -7px;}");
+            WebClient.print(".header-image img { max-width: 4%; height: auto; padding-left: 10px; display: block; float: left; }");
             WebClient.print("button { background-color: #ffffff; color: #84a8b2; /* White text */ padding: 10px 20px; border: none; border-radius: 5px; cursor: pointer; display: block; /* Make it a block element */ margin: 0 auto; /* Center horizontally */ transition-duration: 0.4s; }");
             WebClient.print("button:hover { background-color: #84a8b2; color: #ffffff; /* White text */ padding: 10px 20px; border: none; border-radius: 5px; cursor: pointer; display: block; /* Make it a block element */ margin: 0 auto; /* Center horizontally */ }");
             WebClient.print("button:active { background-color: #7293A1; color: #ffffff; /* White text */ padding: 10px 20px; border: none; border-radius: 5px; cursor: pointer; display: block; /* Make it a block element */ margin: 0 auto; /* Center horizontally */ transform: translateY(2px);}");
-            WebClient.print(".material-symbols-outlined { font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24; height: auto; display: block; margin: 20px auto;}");
             WebClient.print("footer { background-color: #333; color: white; text-align: center; padding: 1px 0; margin-top: auto; /* Push footer to bottom */ transition-duration: 0.4s; }");
-            WebClient.print("</style></head>");
+            WebClient.print("</style>");
+            WebClient.print("<nav><div class='header-image'><img src='https://i.imgur.com/mlL3Fiw.png' alt='Ardu4Weather Logo' href='/'></div>");
+            WebClient.print("<ul><li><a href='/'>Home</a></li>");
+            WebClient.print("<li><a href='/about'>About</a></li>");
+            WebClient.print("<li><a href='/data'>Historical Data</a></li></ul></nav>");
+            WebClient.print("</head>");
             // Javascript Section
             // Body/HTML Section
             WebClient.print("<body><div class='main-container'><h1>Ardu4Weather - Arduino Weather Station</h1>");
@@ -746,7 +750,7 @@ void loop() {
             WebClient.print("&deg;F</span></div>");
             WebClient.print("<div class='slider-container'>");
             WebClient.print("<span class='slider-text left'>-5&deg;C</span>");
-            WebClient.print("<div class='slider-bar'><div class='in-temp-indicator'></div></div>");
+            WebClient.print("<div class='slider-bar'><div class='in-temp-indicator' style='left: " + inTempDisplacement + "%;'></div></div>");
             WebClient.print("<span class='slider-text right'>30&deg;C</span> ");
             WebClient.print("</div>");
             WebClient.print("<div class='data-item'><span class='data-label'>Outdoor Temperature:</span><span>");
@@ -756,7 +760,7 @@ void loop() {
             WebClient.print("&deg;F</span></div>");
             WebClient.print("<div class='slider-container'>");
             WebClient.print("<span class='slider-text left'>-5&deg;C</span>");
-            WebClient.print("<div class='slider-bar'><div class='out-temp-indicator'></div></div>");
+            WebClient.print("<div class='slider-bar'><div class='out-temp-indicator' style='left: " + outTempDisplacement + "%;'></div></div>");
             WebClient.print("<span class='slider-text right'>30&deg;C</span> ");
             WebClient.print("</div>");
             WebClient.print("<div class='data-item'><span class='data-label'>Brightness:</span><span>");
@@ -764,7 +768,7 @@ void loop() {
             WebClient.print(" Lumens</span></div>");
             WebClient.print("<div class='slider-container'>");
             WebClient.print("<span class='slider-text light-left'>0 Lm</span>");
-            WebClient.print("<div class='light-slider-bar'><div class='light-indicator'></div></div>");
+            WebClient.print("<div class='light-slider-bar'><div class='light-indicator' style='left: " + lightDisplacement + "%;'></div></div>");
             WebClient.print("<span class='slider-text light-right'>1000 Lm</span> ");
             WebClient.print("</div>");
             WebClient.print("<div class='data-item'><span class='data-label'>Indoor Humidity:</span><span>");
@@ -772,7 +776,7 @@ void loop() {
             WebClient.print("%</span></div>");
             WebClient.print("<div class='slider-container'>");
             WebClient.print("<span class='slider-text humid-left'>0%</span>");
-            WebClient.print("<div class='humid-slider-bar'><div class='in-humidity-indicator'></div></div>");
+            WebClient.print("<div class='humid-slider-bar'><div class='in-humidity-indicator' style='left: " + inHumidityDisplacement + "%;'></div></div>");
             WebClient.print("<span class='slider-text humid-right'>100%</span> ");
             WebClient.print("</div>");
             WebClient.print("<div class='data-item'><span class='data-label'>Outdoor Humidity:</span><span>");
@@ -780,7 +784,7 @@ void loop() {
             WebClient.print("%</span></div>");
             WebClient.print("<div class='slider-container'>");
             WebClient.print("<span class='slider-text humid-left'>0%</span>");
-            WebClient.print("<div class='humid-slider-bar'><div class='out-humidity-indicator'></div></div>");
+            WebClient.print("<div class='humid-slider-bar'><div class='out-humidity-indicator' style='left: " + outHumidityDisplacement + "%;'></div></div>");
             WebClient.print("<span class='slider-text humid-right'>100%</span> ");
             WebClient.print("</div>");
             WebClient.print("<div class='data-item'><span class='data-label'>Pressure:</span><span>");
@@ -788,7 +792,7 @@ void loop() {
             WebClient.print(" mBar</span></div>");
             WebClient.print("<div class='slider-container'>");
             WebClient.print("<span class='slider-text left'>980 mBar</span>");
-            WebClient.print("<div class='slider-bar'><div class='pressure-indicator'></div></div>");
+            WebClient.print("<div class='slider-bar'><div class='pressure-indicator' style='left: " + pressureDisplacement + "%;'></div></div>");
             WebClient.print("<span class='slider-text right'>1030 mBar</span> ");
             WebClient.print("</div>");
             WebClient.print("<div class='data-item'><span class='data-label'>Approx Altitude:</span><span>");
@@ -796,7 +800,7 @@ void loop() {
             WebClient.print(" m</span></div>");
             WebClient.print("<div class='slider-container'>");
             WebClient.print("<span class='slider-text altitude-left'>0 m</span>");
-            WebClient.print("<div class='altitude-slider-bar'><div class='altitude-indicator'></div></div>");
+            WebClient.print("<div class='altitude-slider-bar'><div class='altitude-indicator' style='left: " + altitudeDisplacement + "%;'></div></div>");
             WebClient.print("<span class='slider-text altitude-right'>3000 m</span> ");
             WebClient.print("</div>");
             WebClient.print("<div class='data-item'><span class='data-label'>Noise Level:</span><span>");
@@ -804,7 +808,7 @@ void loop() {
             WebClient.print(" Units</span></div>");
             WebClient.print("<div class='slider-container'>");
             WebClient.print("<span class='slider-text noise-left'>10 U</span>");
-            WebClient.print("<div class='noise-slider-bar'><div class='noise-indicator'></div></div>");
+            WebClient.print("<div class='noise-slider-bar'><div class='noise-indicator' style='left: " + noiseDisplacement + "%;'></div></div>");
             WebClient.print("<span class='slider-text noise-right'>700 U</span> ");
             WebClient.print("</div>");
             WebClient.print("<div class='data-item'><span class='data-label'>Presence Of Strong Magnetic Field:</span><span>");
@@ -814,8 +818,8 @@ void loop() {
             WebClient.print(secondsOnline);
             WebClient.print(" Seconds</span></div>");
             WebClient.print("<div><button id='toggleButton'>Show Averages</button></div>");
-            // Hidden Avarage Data, 1H
-            WebClient.print("<div id='1HaverageData' style='display: none;'><h1>1 Hour Rolling Avarage</h1>");
+            // Hidden Average Data, 1H
+            WebClient.print("<div id='1HaverageData' style='display: none;'><h1>1 Hour Rolling Average</h1>");
             WebClient.print("<div class='data-item'><span class='data-label'>Temperature:</span><span>");
             WebClient.print(formattedC);
             WebClient.print("&deg;C / ");
@@ -834,8 +838,8 @@ void loop() {
             WebClient.print(formattedMicrophoneSensor);
             WebClient.print(" dB</span></div>");
             WebClient.print("</div>");
-            // Hidden Avarage Data, 12H
-            WebClient.print("<div id='12HaverageData' style='display: none;'><h1>12 Hour Rolling Avarage</h1>");
+            // Hidden Average Data, 12H
+            WebClient.print("<div id='12HaverageData' style='display: none;'><h1>12 Hour Rolling Average</h1>");
             WebClient.print("<div class='data-item'><span class='data-label'>Temperature:</span><span>");
             WebClient.print(formattedC);
             WebClient.print("&deg;C / ");
@@ -855,7 +859,7 @@ void loop() {
             WebClient.print(" dB</span></div>");
             WebClient.print("</div>");
             // Hidden Avarage Data, 24H
-            WebClient.print("<div id='24HaverageData' style='display: none;'><h1>24 Hour Rolling Avarage</h1>");
+            WebClient.print("<div id='24HaverageData' style='display: none;'><h1>24 Hour Rolling Average</h1>");
             WebClient.print("<div class='data-item'><span class='data-label'>Temperature:</span><span>");
             WebClient.print(formattedC);
             WebClient.print("&deg;C / ");
@@ -875,7 +879,7 @@ void loop() {
             WebClient.print(" dB</span></div>");
             WebClient.print("</div>");
             WebClient.print("<body><div class='sidebar-container'><h1>Side Container</h1>");
-            WebClient.print("</div>");
+            WebClient.print("</div></div>");
             // Javascript for button
             WebClient.print("<script>");
             WebClient.print("const toggleButton = document.getElementById('toggleButton');");
@@ -896,7 +900,6 @@ void loop() {
             WebClient.print("  }");
             WebClient.print("});");
             WebClient.print("</script>");
-            WebClient.print("<div class='footer-image'><img src='https://i.imgur.com/mlL3Fiw.png' alt='Ardu4Weather Logo'></div></div>");
             WebClient.print("<footer><p>This is a website and wether station completely hosted and controlled on my Arduino R4 WiFi! - CS<br>");
             WebClient.print("<a href='https://github.com/Aprocryphan/Ardu4Weather' style='text-decoration: underline; display: flex; align-items: center;' target='_blank'>");
             WebClient.print("<img src='https://github.githubassets.com/images/modules/logos_page/GitHub-Mark.png' alt='GitHub Logo' style='width: 20px; height: 20px; margin-right: 5px;'>");
@@ -905,216 +908,219 @@ void loop() {
             WebClient.flush();
             break;
           } else if (url == "/about") {
-              Serial.println(Cblue + "About Page Requested" + Creset);
-              WebClient.print("HTTP/1.1 200 OK\r\n");
-              WebClient.print("Content-Type: text/html; charset=utf-8\r\n");
-              WebClient.print("X-Content-Type-Options: nosniff\r\n");
-              WebClient.print("Cache-Control: no-cache, public\r\n");
-              WebClient.print("Server: Arduino\r\n");
-              WebClient.print("Content-Security-Policy: frame-ancestors 'self';\r\n");
-              WebClient.print("\r\n");
-              WebClient.print("<!DOCTYPE html><html lang='en'>");
-              WebClient.print("<meta name='viewport' content='width=device-width'>");
-              // Style/CSS Section
-              WebClient.print("<head><meta charset='utf-8'>");
-              WebClient.print("<title>Ardu4Weather</title>");
-              WebClient.print("<link rel='preconnect' href='https://fonts.googleapis.com'>");
-              WebClient.print("<link rel='preconnect' href='https://fonts.gstatic.com' crossorigin>");
-              WebClient.print("<link href='https://fonts.googleapis.com/css2?family=Funnel+Display:wght@300..800&display=swap' rel='stylesheet'>");
-              WebClient.print("<link rel='stylesheet' href='https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&icon_names=all_inclusive' />");
-              WebClient.print("<link rel='icon' href='https://i.imgur.com/mlL3Fiw.png'>");
-              WebClient.print("<nav><ul><li><a href='/'>Home</a></li>");
-              WebClient.print("<li><a href='/about'>About</a></li>");
-              WebClient.print("<li><a href='/data'>Historical Data</a></li></ul></nav>");
-              WebClient.print("<style>");
-              WebClient.print("nav { background-color: #5e3434; padding: 10px 0; font-size: 15px; transition-duration: 0.4s; }");
-              WebClient.print("nav ul { list-style: none; margin: 0; padding: 0; text-align: center; }");
-              WebClient.print("nav li { display: inline-block; margin: 0 15px; /* Spacing between navigation items */ }");
-              WebClient.print("nav a { color: #ffffff; text-decoration: none; }");
-              WebClient.print("nav a:hover { color: #ccc; }");
-              WebClient.print("h1 { color: #ffffff; text-align: center; margin-bottom: 20px; font-size: 40px; }");
-              WebClient.print("h2 { color: #ffffff; text-align: center; margin-bottom: 20px; font-size: 30px; }");
-              WebClient.print("p { color: #ffffff; text-align: center; margin-bottom: 20px; font-size: 20px; }");
-              WebClient.print(".footer-p { color: #ffffff; text-align: center; margin-bottom: 20px; font-size: 16px; }");
-              WebClient.print("body { background: linear-gradient(180deg, hsla(354, 53%, 70%, 1) 0%, hsla(358, 40%, 54%, 1) 100%); font-family: 'Funnel Display', serif; font-weight: 300; margin: 0; /* Remove default margins */ display: flex; flex-direction: column; min-height: 100vh; /* Ensure full viewport height */ transition-duration: 0.4s; }");
-              WebClient.print(".main-container { width: 110%; max-width: 800px; margin: 20px auto; padding: 20px; background-color: #7d4042; box-shadow: 0 0 10px rgba(0, 0, 0, 0.1); /* Subtle shadow */ border-radius: 8px; transition-duration: 0.4s; }");
-              WebClient.print("img { max-width: 30%; height: auto; border-radius: 16px; margin: 10px; }");
-              WebClient.print(".image-text-container { display: flex; flex-direction: column; width: 80%; margin: 20px auto; }");
-              WebClient.print(".image-text-pair { display: flex; align-items: center; margin-bottom: 20px; }");
-              WebClient.print(".image-text-pair img { max-width: 30%; height: auto; border-radius: 16px; margin-right: -30px; margin-left: -40px; }");
-              WebClient.print(".image-text p { width: 110%; padding: 40px; padding-top: 0px; box-sizing: border-box; margin-left: 30px; text-align: left; }");
-              WebClient.print("footer { background-color: #333; color: white; text-align: center; padding: 1px 0; margin-top: auto; /* Push footer to bottom */ transition-duration: 0.4s; }");
-              WebClient.print("</style></head>");
-              WebClient.print("<body><div class='main-container'><h1>Ardu4Weather - About</h1>");
-              WebClient.print("<h2>Arduino Uno R4 Wifi</h2>");
-              WebClient.print("<div class='image-text-container'>");
-              WebClient.print("<div class='image-text-pair'><img src=\'https://i.imgur.com/2Vkg8gU.jpeg' alt=\'Arduino R4 WiFi Image Close'><div class='image-text'>");
-              WebClient.print("<p>My Arduino Uno R4 WiFi is the heart of this project, hosting the website you're currently viewing, complete with all subpages. It's connected to a variety of sensors, including a DHT22 for temperature and humidity, a BMP180 for barometric pressure, and a photoresistor for light levels. The Arduino collects data constantly in the loop() function, processing it and sending it to the website in real-time.</p>");
-              WebClient.print("</div></div>");
-              WebClient.print("<h2>Breadboard</h2>");
-              WebClient.print("<div class='image-text-pair'><img src=\'https://i.imgur.com/Z8AHWJq.jpeg' alt=\'Arduino Breadboard Image'><div class='image-text'>");
-              WebClient.print("<p>This is the breadboard that contains most of the sensors used in this project. It is a small, clear, standard 30x10 breadboard.</p>");
-              WebClient.print("</div></div>");
-              WebClient.print("<h2>Arduino Full Image</h2>");
-              WebClient.print("<div class='image-text-pair'><img src=\'https://i.imgur.com/yuNZByw.jpeg' alt=\'Arduino Full Image'><div class='image-text'>");
-              WebClient.print("<p>This is an image of the full project with breadboard and Arduino in view. You can also see the wires that lead outside my window for the external DHT sensor.</p>");
-              WebClient.print("</div></div>");
-              WebClient.print("<h2>Microphone Sensor Image</h2>");
-              WebClient.print("<div class='image-text-pair'><img src=\'https://i.imgur.com/541JSSP.jpeg' alt=\'Microphone Sensor Image'><div class='image-text'>");
-              WebClient.print("<p>MAX4466 Electret Microphone Amplifier for noise levels</p>");
-              WebClient.print("</div></div>");
-              WebClient.print("<h2>Pressure Sensor Image</h2>");
-              WebClient.print("<div class='image-text-pair'><img src=\'https://i.imgur.com/uKWry8u.jpeg' alt=\'Pressure Sensor Image'><div class='image-text'>");
-              WebClient.print("<p>BMP180</p>");
-              WebClient.print("</div></div>");
-              WebClient.print("<h2>DHT Sensor Image</h2>");
-              WebClient.print("<div class='image-text-pair'><img src=\'https://i.imgur.com/A5zKZvm.jpeg' alt=\'DHT Sensor Image'><div class='image-text'>");
-              WebClient.print("<p>This is the internal DHT22 sensor, it returns the temperature and humidity digitally.</p>");
-              WebClient.print("</div></div>");
-              WebClient.print("<h2>Light Sensor Image</h2>");
-              WebClient.print("<div class='image-text-pair'><img src=\'https://i.imgur.com/7kgKpvS.jpeg' alt=\'Light Sensor Image'><div class='image-text'>");
-              WebClient.print("<p>Photoresistor</p>");
-              WebClient.print("</div></div></div></div>");
-              WebClient.print("<footer><p class='footer-p'>This is a website and wether station completely hosted and controlled on my Arduino R4 WiFi! - CS</p></footer>");
-              WebClient.print("</body></html>");
-              WebClient.flush();
-              break;
+            Serial.println(Cblue + "About Page Requested" + Creset);
+            WebClient.print("HTTP/1.1 200 OK\r\n");
+            WebClient.print("Content-Type: text/html; charset=utf-8\r\n");
+            WebClient.print("X-Content-Type-Options: nosniff\r\n");
+            WebClient.print("Cache-Control: no-cache, public\r\n");
+            WebClient.print("Server: Arduino\r\n");
+            WebClient.print("Content-Security-Policy: frame-ancestors 'self';\r\n");
+            WebClient.print("\r\n");
+            WebClient.print("<!DOCTYPE html><html lang='en'>");
+            WebClient.print("<meta name='viewport' content='width=device-width'>");
+            // Style/CSS Section
+            WebClient.print("<head><meta charset='utf-8'>");
+            WebClient.print("<title>Ardu4Weather</title>");
+            WebClient.print("<link rel='preconnect' href='https://fonts.googleapis.com'>");
+            WebClient.print("<link rel='preconnect' href='https://fonts.gstatic.com' crossorigin>");
+            WebClient.print("<link href='https://fonts.googleapis.com/css2?family=Funnel+Display:wght@300..800&display=swap' rel='stylesheet'>");
+            WebClient.print("<link rel='stylesheet' href='https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&icon_names=all_inclusive' />");
+            WebClient.print("<link rel='icon' href='https://i.imgur.com/mlL3Fiw.png'>");
+            WebClient.print("<nav><ul><li><a href='/'>Home</a></li>");
+            WebClient.print("<li><a href='/about'>About</a></li>");
+            WebClient.print("<li><a href='/data'>Historical Data</a></li></ul></nav>");
+            WebClient.print("<style>");
+            WebClient.print("nav { background-color: #5e3434; padding: 10px 0; font-size: 15px; transition-duration: 0.4s; }");
+            WebClient.print("nav ul { list-style: none; margin: 0; padding: 0; text-align: center; }");
+            WebClient.print("nav li { display: inline-block; margin: 0 15px; /* Spacing between navigation items */ }");
+            WebClient.print("nav a { color: #ffffff; text-decoration: none; }");
+            WebClient.print("nav a:hover { color: #ccc; }");
+            WebClient.print("h1 { color: #ffffff; text-align: center; margin-bottom: 20px; font-size: 40px; }");
+            WebClient.print("h2 { color: #ffffff; text-align: center; margin-bottom: 20px; font-size: 30px; }");
+            WebClient.print("p { color: #ffffff; text-align: center; margin-bottom: 20px; font-size: 20px; }");
+            WebClient.print(".footer-p { color: #ffffff; text-align: center; margin-bottom: 20px; font-size: 16px; }");
+            WebClient.print("body { background: linear-gradient(180deg, hsla(354, 53%, 70%, 1) 0%, hsla(358, 40%, 54%, 1) 100%); font-family: 'Funnel Display', serif; font-weight: 300; margin: 0; /* Remove default margins */ display: flex; flex-direction: column; min-height: 100vh; /* Ensure full viewport height */ transition-duration: 0.4s; }");
+            WebClient.print(".main-container { width: 110%; max-width: 800px; margin: 20px auto; padding: 20px; background-color: #7d4042; box-shadow: 0 0 10px rgba(0, 0, 0, 0.1); /* Subtle shadow */ border-radius: 8px; transition-duration: 0.4s; }");
+            WebClient.print("img { max-width: 30%; height: auto; border-radius: 16px; margin: 10px; }");
+            WebClient.print(".image-text-container { display: flex; flex-direction: column; width: 80%; margin: 20px auto; }");
+            WebClient.print(".image-text-pair { display: flex; align-items: center; margin-bottom: 20px; }");
+            WebClient.print(".image-text-pair img { max-width: 30%; height: auto; border-radius: 16px; margin-right: -30px; margin-left: -40px; }");
+            WebClient.print(".image-text p { width: 110%; padding: 40px; padding-top: 0px; box-sizing: border-box; margin-left: 30px; text-align: left; }");
+            WebClient.print("footer { background-color: #333; color: white; text-align: center; padding: 1px 0; margin-top: auto; /* Push footer to bottom */ transition-duration: 0.4s; }");
+            WebClient.print("</style></head>");
+            WebClient.print("<body><div class='main-container'><h1>Ardu4Weather - About</h1>");
+            WebClient.print("<h2>Arduino Uno R4 Wifi</h2>");
+            WebClient.print("<div class='image-text-container'>");
+            WebClient.print("<div class='image-text-pair'><img src=\'https://i.imgur.com/2Vkg8gU.jpeg' alt=\'Arduino R4 WiFi Image Close'><div class='image-text'>");
+            WebClient.print("<p>My Arduino Uno R4 WiFi is the heart of this project, hosting the website you're currently viewing, complete with all subpages. It's connected to a variety of sensors, including a DHT22 for temperature and humidity, a BMP180 for barometric pressure, and a photoresistor for light levels. The Arduino collects data constantly in the loop() function, processing it and sending it to the website in real-time.</p>");
+            WebClient.print("</div></div>");
+            WebClient.print("<h2>Breadboard</h2>");
+            WebClient.print("<div class='image-text-pair'><img src=\'https://i.imgur.com/Z8AHWJq.jpeg' alt=\'Arduino Breadboard Image'><div class='image-text'>");
+            WebClient.print("<p>This is the breadboard that contains most of the sensors used in this project. It is a small, clear, standard 30x10 breadboard.</p>");
+            WebClient.print("</div></div>");
+            WebClient.print("<h2>Arduino Full Image</h2>");
+            WebClient.print("<div class='image-text-pair'><img src=\'https://i.imgur.com/yuNZByw.jpeg' alt=\'Arduino Full Image'><div class='image-text'>");
+            WebClient.print("<p>This is an image of the full project with breadboard and Arduino in view. You can also see the wires that lead outside my window for the external DHT sensor.</p>");
+            WebClient.print("</div></div>");
+            WebClient.print("<h2>Microphone Sensor Image</h2>");
+            WebClient.print("<div class='image-text-pair'><img src=\'https://i.imgur.com/541JSSP.jpeg' alt=\'Microphone Sensor Image'><div class='image-text'>");
+            WebClient.print("<p>MAX4466 Electret Microphone Amplifier for noise levels</p>");
+            WebClient.print("</div></div>");
+            WebClient.print("<h2>Pressure Sensor Image</h2>");
+            WebClient.print("<div class='image-text-pair'><img src=\'https://i.imgur.com/uKWry8u.jpeg' alt=\'Pressure Sensor Image'><div class='image-text'>");
+            WebClient.print("<p>BMP180</p>");
+            WebClient.print("</div></div>");
+            WebClient.print("<h2>DHT Sensor Image</h2>");
+            WebClient.print("<div class='image-text-pair'><img src=\'https://i.imgur.com/A5zKZvm.jpeg' alt=\'DHT Sensor Image'><div class='image-text'>");
+            WebClient.print("<p>This is the internal DHT22 sensor, it returns the temperature and humidity digitally.</p>");
+            WebClient.print("</div></div>");
+            WebClient.print("<h2>Light Sensor Image</h2>");
+            WebClient.print("<div class='image-text-pair'><img src=\'https://i.imgur.com/7kgKpvS.jpeg' alt=\'Light Sensor Image'><div class='image-text'>");
+            WebClient.print("<p>Photoresistor</p>");
+            WebClient.print("</div></div></div></div>");
+            WebClient.print("<footer><p class='footer-p'>This is a website and wether station completely hosted and controlled on my Arduino R4 WiFi! - CS</p></footer>");
+            WebClient.print("</body></html>");
+            WebClient.flush();
+            break;
           } else if (url == "/data") {
-              Serial.println(Cblue + "Data Page Requested" + Creset);
-              WebClient.print("HTTP/1.1 200 OK\r\n");
-              WebClient.print("Content-Type: text/html; charset=utf-8\r\n");
-              WebClient.print("X-Content-Type-Options: nosniff\r\n");
-              WebClient.print("Cache-Control: no-cache, public\r\n");
-              WebClient.print("Server: Arduino\r\n");
-              WebClient.print("Content-Security-Policy: frame-ancestors 'self';\r\n");
-              WebClient.print("\r\n");
-              WebClient.print("<!DOCTYPE html><html lang='en'>");
-              WebClient.print("<meta name='viewport' content='width=device-width'>");
-              // Style/CSS Section
-              WebClient.print("<head><meta charset='utf-8'>");
-              WebClient.print("<title>Ardu4Weather</title>");
-              WebClient.print("<link rel='preconnect' href='https://fonts.googleapis.com'>");
-              WebClient.print("<link rel='preconnect' href='https://fonts.gstatic.com' crossorigin>");
-              WebClient.print("<link href='https://fonts.googleapis.com/css2?family=Funnel+Display:wght@300..800&display=swap' rel='stylesheet'>");
-              WebClient.print("<link rel='stylesheet' href='https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&icon_names=construction' />");
-              WebClient.print("<link rel='icon' href='https://i.imgur.com/mlL3Fiw.png'>");
-              WebClient.print("<nav><ul><li><a href='/'>Home</a></li>");
-              WebClient.print("<li><a href='/about'>About</a></li>");
-              WebClient.print("<li><a href='/data'>Historical Data</a></li></ul></nav>");
-              WebClient.print("<style>");
-              WebClient.print("nav { background-color: #24331e; padding: 10px 0; transition-duration: 0.4s; }");
-              WebClient.print("nav ul { list-style: none; margin: 0; padding: 0; text-align: center; }");
-              WebClient.print("nav li { display: inline-block; margin: 0 15px; /* Spacing between navigation items */ }");
-              WebClient.print("nav a { color: #ffffff; text-decoration: none; }");
-              WebClient.print("nav a:hover { color: #ccc; }");
-              WebClient.print(".material-symbols-outlined { font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24 }");
-              WebClient.print(".icon { font-size: 16px; color: #ffffff; z-index: 0; }");
-              WebClient.print("body { background: linear-gradient(180deg, hsla(93, 64%, 79%, 1) 0%, hsla(96, 30%, 54%, 1) 100%); font-family: 'Funnel Display', serif; font-weight: 300; margin: 0; /* Remove default margins */ display: flex; flex-direction: column; min-height: 100vh; /* Ensure full viewport height */ transition-duration: 0.4s; }");
-              WebClient.print(".main-container { width: 110%; max-width: 800px; margin: 20px auto; padding: 20px; background-color: #45573b; box-shadow: 0 0 10px rgba(0, 0, 0, 0.1); /* Subtle shadow */ border-radius: 8px; transition-duration: 0.4s; }");
-              WebClient.print("h1 { color: #ffffff; text-align: center; margin-bottom: 20px; font-size: 40px; }");
-              WebClient.print("h2 { color: #ffffff; text-align: center; margin-bottom: 20px; font-size: 20px; }");
-              WebClient.print("p { color: #ffffff; text-align: center; margin-bottom: 20px; }");
-              WebClient.print("footer { background-color: #333; color: white; text-align: center; padding: 1px 0; margin-top: auto; /* Push footer to bottom */ transition-duration: 0.4s; }");
-              WebClient.print("</style></head>");
-              WebClient.print("<body><div class='main-container'><h1>Ardu4Weather - Data</h1>");
-              WebClient.print("<h2>Historical Data</h2>");
-              WebClient.print("<p>Page Under Construction! <span class='material-symbols-outlined icon'>construction</span></p>");
-              WebClient.print("</div>");
-              WebClient.print("<footer><p>This is a website and wether station completely hosted and controlled on my Arduino R4 WiFi! - CS</p></footer>");
-              WebClient.print("</body></html>");
-              WebClient.flush();
-              break;
+            Serial.println(Cblue + "Data Page Requested" + Creset);
+            WebClient.print("HTTP/1.1 200 OK\r\n");
+            WebClient.print("Content-Type: text/html; charset=utf-8\r\n");
+            WebClient.print("X-Content-Type-Options: nosniff\r\n");
+            WebClient.print("Cache-Control: no-cache, public\r\n");
+            WebClient.print("Server: Arduino\r\n");
+            WebClient.print("Content-Security-Policy: frame-ancestors 'self';\r\n");
+            WebClient.print("\r\n");
+            WebClient.print("<!DOCTYPE html><html lang='en'>");
+            WebClient.print("<meta name='viewport' content='width=device-width'>");
+            // Style/CSS Section
+            WebClient.print("<head><meta charset='utf-8'>");
+            WebClient.print("<title>Ardu4Weather</title>");
+            WebClient.print("<link rel='preconnect' href='https://fonts.googleapis.com'>");
+            WebClient.print("<link rel='preconnect' href='https://fonts.gstatic.com' crossorigin>");
+            WebClient.print("<link href='https://fonts.googleapis.com/css2?family=Funnel+Display:wght@300..800&display=swap' rel='stylesheet'>");
+            WebClient.print("<link rel='stylesheet' href='https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&icon_names=construction' />");
+            WebClient.print("<link rel='icon' href='https://i.imgur.com/mlL3Fiw.png'>");
+            WebClient.print("<nav><ul><li><a href='/'>Home</a></li>");
+            WebClient.print("<li><a href='/about'>About</a></li>");
+            WebClient.print("<li><a href='/data'>Historical Data</a></li></ul></nav>");
+            WebClient.print("<style>");
+            WebClient.print("nav { background-color: #24331e; padding: 10px 0; transition-duration: 0.4s; }");
+            WebClient.print("nav ul { list-style: none; margin: 0; padding: 0; text-align: center; }");
+            WebClient.print("nav li { display: inline-block; margin: 0 15px; /* Spacing between navigation items */ }");
+            WebClient.print("nav a { color: #ffffff; text-decoration: none; }");
+            WebClient.print("nav a:hover { color: #ccc; }");
+            WebClient.print(".material-symbols-outlined { font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24 }");
+            WebClient.print(".icon { font-size: 16px; color: #ffffff; z-index: 0; }");
+            WebClient.print("body { background: linear-gradient(180deg, hsla(93, 64%, 79%, 1) 0%, hsla(96, 30%, 54%, 1) 100%); font-family: 'Funnel Display', serif; font-weight: 300; margin: 0; /* Remove default margins */ display: flex; flex-direction: column; min-height: 100vh; /* Ensure full viewport height */ transition-duration: 0.4s; }");
+            WebClient.print(".main-container { width: 110%; max-width: 800px; margin: 20px auto; padding: 20px; background-color: #45573b; box-shadow: 0 0 10px rgba(0, 0, 0, 0.1); /* Subtle shadow */ border-radius: 8px; transition-duration: 0.4s; }");
+            WebClient.print("h1 { color: #ffffff; text-align: center; margin-bottom: 20px; font-size: 40px; }");
+            WebClient.print("h2 { color: #ffffff; text-align: center; margin-bottom: 20px; font-size: 20px; }");
+            WebClient.print("p { color: #ffffff; text-align: center; margin-bottom: 20px; }");
+            WebClient.print("footer { background-color: #333; color: white; text-align: center; padding: 1px 0; margin-top: auto; /* Push footer to bottom */ transition-duration: 0.4s; }");
+            WebClient.print("</style></head>");
+            WebClient.print("<body><div class='main-container'><h1>Ardu4Weather - Data</h1>");
+            WebClient.print("<h2>Historical Data</h2>");
+            WebClient.print("<p>Page Under Construction! <span class='material-symbols-outlined icon'>construction</span></p>");
+            WebClient.print("</div>");
+            WebClient.print("<footer><p>This is a website and wether station completely hosted and controlled on my Arduino R4 WiFi! - CS</p></footer>");
+            WebClient.print("</body></html>");
+            WebClient.flush();
+            break;
           } else if (url == "/aprocryphan") {
-              Serial.println(Cblue + "About Apro Page Requested" + Creset);
-              WebClient.print("HTTP/1.1 200 OK\r\n");
-              WebClient.print("Content-Type: text/html; charset=utf-8\r\n");
-              WebClient.print("X-Content-Type-Options: nosniff\r\n");
-              WebClient.print("Cache-Control: no-cache, public\r\n");
-              WebClient.print("Server: Arduino\r\n");
-              WebClient.print("Content-Security-Policy: frame-ancestors 'self';\r\n");
-              WebClient.print("\r\n");
-              WebClient.print("<!DOCTYPE html><html lang='en'>");
-              WebClient.print("<meta name='viewport' content='width=device-width'>");
-              // Style/CSS Section
-              WebClient.print("<head><meta charset='utf-8'>");
-              WebClient.print("<title>Ardu4Weather</title>");
-              WebClient.print("<link rel='preconnect' href='https://fonts.googleapis.com'>");
-              WebClient.print("<link rel='preconnect' href='https://fonts.gstatic.com' crossorigin>");
-              WebClient.print("<link href='https://fonts.googleapis.com/css2?family=Funnel+Display:wght@300..800&display=swap' rel='stylesheet'>");
-              WebClient.print("<link rel='stylesheet' href='https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&icon_names=construction' />");
-              WebClient.print("<link rel='icon' href='https://i.imgur.com/mlL3Fiw.png'>");
-              WebClient.print("<nav><ul><li><a href='/'>Home</a></li>");
-              WebClient.print("<li><a href='/about'>About</a></li>");
-              WebClient.print("<li><a href='/data'>Historical Data</a></li></ul></nav>");
-              WebClient.print("<style>");
-              WebClient.print("nav { background-color: #ffffff; padding: 10px 0; transition-duration: 0.4s; }");
-              WebClient.print("nav ul { list-style: none; margin: 0; padding: 0; text-align: center; }");
-              WebClient.print("nav li { display: inline-block; margin: 0 15px; /* Spacing between navigation items */ }");
-              WebClient.print("nav a { color: #000000; text-decoration: none; }");
-              WebClient.print("nav a:hover { color: #ccc; }");
-              WebClient.print(".material-symbols-outlined { font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24 }");
-              WebClient.print("body { background: #000000; font-family: 'Funnel Display', serif; font-weight: 300; margin: 0; /* Remove default margins */ display: flex; flex-direction: column; min-height: 100vh; /* Ensure full viewport height */ transition-duration: 0.4s; }");
-              WebClient.print(".icon { font-size: 16px; color: #000000; z-index: 0; }");
-              WebClient.print(".main-container { width: 110%; max-width: 800px; margin: 20px auto; padding: 20px; background-color: #ffffff; border-radius: 8px; transition-duration: 0.4s; }");
-              WebClient.print("h1 { color: #000000; text-align: center; margin-bottom: 20px; font-size: 40px; }");
-              WebClient.print("h2 { color: #000000; text-align: center; margin-bottom: 20px; font-size: 20px; }");
-              WebClient.print("p { color: #000000; }");
-              WebClient.print("footer { background-color: #ffffff; color: white; text-align: center; padding: 1px 0; margin-top: auto; /* Push footer to bottom */ transition-duration: 0.4s; }");
-              WebClient.print("</style></head>");
-              WebClient.print("<body><div class='main-container'><h1>Ardu4Weather - Aprocryphan</h1>");
-              WebClient.print("<h2>About</h2>");
-              WebClient.print("<p>Page Under Construction! <span class='material-symbols-outlined icon'>construction</span></p>");
-              WebClient.print("</div>");
-              WebClient.print("<footer><p>This is a website and wether station completely hosted and controlled on my Arduino R4 WiFi! - CS</p></footer>");
-              WebClient.print("</body></html>");
-              WebClient.flush();
-              break;
+            Serial.println(Cblue + "About Apro Page Requested" + Creset);
+            WebClient.print("HTTP/1.1 200 OK\r\n");
+            WebClient.print("Content-Type: text/html; charset=utf-8\r\n");
+            WebClient.print("X-Content-Type-Options: nosniff\r\n");
+            WebClient.print("Cache-Control: no-cache, public\r\n");
+            WebClient.print("Server: Arduino\r\n");
+            WebClient.print("Content-Security-Policy: frame-ancestors 'self';\r\n");
+            WebClient.print("\r\n");
+            WebClient.print("<!DOCTYPE html><html lang='en'>");
+            WebClient.print("<meta name='viewport' content='width=device-width'>");
+            // Style/CSS Section
+            WebClient.print("<head><meta charset='utf-8'>");
+            WebClient.print("<title>Ardu4Weather</title>");
+            WebClient.print("<link rel='preconnect' href='https://fonts.googleapis.com'>");
+            WebClient.print("<link rel='preconnect' href='https://fonts.gstatic.com' crossorigin>");
+            WebClient.print("<link href='https://fonts.googleapis.com/css2?family=Funnel+Display:wght@300..800&display=swap' rel='stylesheet'>");
+            WebClient.print("<link rel='stylesheet' href='https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&icon_names=construction' />");
+            WebClient.print("<link rel='icon' href='https://i.imgur.com/mlL3Fiw.png'>");
+            WebClient.print("<nav><ul><li><a href='/'>Home</a></li>");
+            WebClient.print("<li><a href='/about'>About</a></li>");
+            WebClient.print("<li><a href='/data'>Historical Data</a></li></ul></nav>");
+            WebClient.print("<style>");
+            WebClient.print("nav { background-color: #ffffff; padding: 10px 0; transition-duration: 0.4s; }");
+            WebClient.print("nav ul { list-style: none; margin: 0; padding: 0; text-align: center; }");
+            WebClient.print("nav li { display: inline-block; margin: 0 15px; /* Spacing between navigation items */ }");
+            WebClient.print("nav a { color: #000000; text-decoration: none; }");
+            WebClient.print("nav a:hover { color: #ccc; }");
+            WebClient.print(".material-symbols-outlined { font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24 }");
+            WebClient.print("body { background: #000000; font-family: 'Funnel Display', serif; font-weight: 300; margin: 0; /* Remove default margins */ display: flex; flex-direction: column; min-height: 100vh; /* Ensure full viewport height */ transition-duration: 0.4s; }");
+            WebClient.print(".icon { font-size: 16px; color: #000000; z-index: 0; }");
+            WebClient.print(".main-container { width: 110%; max-width: 800px; margin: 20px auto; padding: 20px; background-color: #ffffff; border-radius: 8px; transition-duration: 0.4s; }");
+            WebClient.print("h1 { color: #000000; text-align: center; margin-bottom: 20px; font-size: 40px; }");
+            WebClient.print("h2 { color: #000000; text-align: center; margin-bottom: 20px; font-size: 20px; }");
+            WebClient.print("p { color: #000000; }");
+            WebClient.print("footer { background-color: #ffffff; color: white; text-align: center; padding: 1px 0; margin-top: auto; /* Push footer to bottom */ transition-duration: 0.4s; }");
+            WebClient.print("</style></head>");
+            WebClient.print("<body><div class='main-container'><h1>Ardu4Weather - Aprocryphan</h1>");
+            WebClient.print("<h2>About</h2>");
+            WebClient.print("<p>Page Under Construction! <span class='material-symbols-outlined icon'>construction</span></p>");
+            WebClient.print("</div>");
+            WebClient.print("<footer><p>This is a website and wether station completely hosted and controlled on my Arduino R4 WiFi! - CS</p></footer>");
+            WebClient.print("</body></html>");
+            WebClient.flush();
+            break;
+          } else if (url == "/web1") {
+            WebClient.flush();
+            break;
           } else { // Serve error 404 page
-              Serial.println(Cyellow + "Error 404" + Creset);
-              WebClient.print("HTTP/1.1 200 OK\r\n");
-              WebClient.print("Content-Type: text/html; charset=utf-8\r\n");
-              WebClient.print("X-Content-Type-Options: nosniff\r\n");
-              WebClient.print("Cache-Control: no-cache, public\r\n");
-              WebClient.print("Server: Arduino\r\n");
-              WebClient.print("Content-Security-Policy: frame-ancestors 'self';\r\n");
-              WebClient.print("\r\n");
-              WebClient.print("<!DOCTYPE html><html lang='en'>");
-              WebClient.print("<meta name='viewport' content='width=device-width'>");
-              // Style/CSS Section
-              WebClient.print("<head><meta charset='utf-8'>");
-              WebClient.print("<title>Ardu4Weather</title>");
-              WebClient.print("<link rel='preconnect' href='https://fonts.googleapis.com'>");
-              WebClient.print("<link rel='preconnect' href='https://fonts.gstatic.com' crossorigin>");
-              WebClient.print("<link href='https://fonts.googleapis.com/css2?family=Funnel+Display:wght@300..800&display=swap' rel='stylesheet'>");
-              WebClient.print("<link rel='stylesheet' href='https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&icon_names=sentiment_very_dissatisfied' />");
-              WebClient.print("<link rel='icon' href='https://i.imgur.com/mlL3Fiw.png'>");
-              WebClient.print("<nav><ul><li><a href='/'>Home</a></li>");
-              WebClient.print("<li><a href='/about'>About</a></li>");
-              WebClient.print("<li><a href='/data'>Historical Data</a></li></ul></nav>");
-              WebClient.print("<style>");
-              WebClient.print(".material-symbols-outlined { font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24 }");
-              WebClient.print("nav { background-color: #333; padding: 10px 0; transition-duration: 0.4s; }");
-              WebClient.print("nav ul { list-style: none; margin: 0; padding: 0; text-align: center; }");
-              WebClient.print("nav li { display: inline-block; margin: 0 15px; /* Spacing between navigation items */ }");
-              WebClient.print("nav a { color: #ffffff; text-decoration: none; }");
-              WebClient.print("nav a:hover { color: #ccc; }");
-              WebClient.print("body { font-family: 'Funnel Display', serif; font-weight: 300; margin: 0; /* Remove default margins */ display: flex; flex-direction: column; min-height: 100vh; /* Ensure full viewport height */ transition-duration: 0.4s; }");
-              WebClient.print(".center-container { display: flex; justify-content: center; align-items: center; flex-grow: 1; }");
-              WebClient.print(".background-icon { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); font-size: 1000px; color: #000000; opacity: 0.03; z-index: 0; }");
-              WebClient.print("h1 { color: #999999; text-align: center; margin-bottom: 20px; font-size: 70px; }");
-              WebClient.print("h2 { color: #999999; text-align: center; margin-bottom: 20px; font-size: 50px; }");
-              WebClient.print("footer { background-color: #333; color: white; text-align: center; padding: 1px 0; margin-top: auto; /* Push footer to bottom */ transition-duration: 0.4s; }");
-              WebClient.print("</style></head>");
-              WebClient.print("<body><div class='center-container'>");
-              WebClient.print("<div>");
-              WebClient.print("<h1>Error 404 - Page Not Found</h1>");
-              WebClient.print("<h2>The page you're looking for wasn't found on the server</h2>");
-              WebClient.print("</div>");
-              WebClient.print("</div>");
-              WebClient.print("<span class='material-symbols-outlined background-icon'>sentiment_very_dissatisfied</span>");
-              WebClient.print("<footer><p>This is a website and wether station completely hosted and controlled on my Arduino R4 WiFi! - CS</p></footer>");
-              WebClient.print("</body></html>");
-              break;
+            Serial.println(Cyellow + "Error 404" + Creset);
+            WebClient.print("HTTP/1.1 200 OK\r\n");
+            WebClient.print("Content-Type: text/html; charset=utf-8\r\n");
+            WebClient.print("X-Content-Type-Options: nosniff\r\n");
+            WebClient.print("Cache-Control: no-cache, public\r\n");
+            WebClient.print("Server: Arduino\r\n");
+            WebClient.print("Content-Security-Policy: frame-ancestors 'self';\r\n");
+            WebClient.print("\r\n");
+            WebClient.print("<!DOCTYPE html><html lang='en'>");
+            WebClient.print("<meta name='viewport' content='width=device-width'>");
+            // Style/CSS Section
+            WebClient.print("<head><meta charset='utf-8'>");
+            WebClient.print("<title>Ardu4Weather</title>");
+            WebClient.print("<link rel='preconnect' href='https://fonts.googleapis.com'>");
+            WebClient.print("<link rel='preconnect' href='https://fonts.gstatic.com' crossorigin>");
+            WebClient.print("<link href='https://fonts.googleapis.com/css2?family=Funnel+Display:wght@300..800&display=swap' rel='stylesheet'>");
+            WebClient.print("<link rel='stylesheet' href='https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&icon_names=sentiment_very_dissatisfied' />");
+            WebClient.print("<link rel='icon' href='https://i.imgur.com/mlL3Fiw.png'>");
+            WebClient.print("<nav><ul><li><a href='/'>Home</a></li>");
+            WebClient.print("<li><a href='/about'>About</a></li>");
+            WebClient.print("<li><a href='/data'>Historical Data</a></li></ul></nav>");
+            WebClient.print("<style>");
+            WebClient.print(".material-symbols-outlined { font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24 }");
+            WebClient.print("nav { background-color: #333; padding: 10px 0; transition-duration: 0.4s; }");
+            WebClient.print("nav ul { list-style: none; margin: 0; padding: 0; text-align: center; }");
+            WebClient.print("nav li { display: inline-block; margin: 0 15px; /* Spacing between navigation items */ }");
+            WebClient.print("nav a { color: #ffffff; text-decoration: none; }");
+            WebClient.print("nav a:hover { color: #ccc; }");
+            WebClient.print("body { font-family: 'Funnel Display', serif; font-weight: 300; margin: 0; /* Remove default margins */ display: flex; flex-direction: column; min-height: 100vh; /* Ensure full viewport height */ transition-duration: 0.4s; }");
+            WebClient.print(".center-container { display: flex; justify-content: center; align-items: center; flex-grow: 1; }");
+            WebClient.print(".background-icon { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); font-size: 1000px; color: #000000; opacity: 0.03; z-index: 0; }");
+            WebClient.print("h1 { color: #999999; text-align: center; margin-bottom: 20px; font-size: 70px; }");
+            WebClient.print("h2 { color: #999999; text-align: center; margin-bottom: 20px; font-size: 50px; }");
+            WebClient.print("footer { background-color: #333; color: white; text-align: center; padding: 1px 0; margin-top: auto; /* Push footer to bottom */ transition-duration: 0.4s; }");
+            WebClient.print("</style></head>");
+            WebClient.print("<body><div class='center-container'>");
+            WebClient.print("<div>");
+            WebClient.print("<h1>Error 404 - Page Not Found</h1>");
+            WebClient.print("<h2>The page you're looking for wasn't found on the server</h2>");
+            WebClient.print("</div>");
+            WebClient.print("</div>");
+            WebClient.print("<span class='material-symbols-outlined background-icon'>sentiment_very_dissatisfied</span>");
+            WebClient.print("<footer><p>This is a website and wether station completely hosted and controlled on my Arduino R4 WiFi! - CS</p></footer>");
+            WebClient.print("</body></html>");
+            break;
           }
         }
       }
@@ -1125,4 +1131,5 @@ void loop() {
     url = ""; // Empty out for next connection request
     referrer = ""; // Empty out for next connection request
   }
+  //Serial.println(millis() - DebugMillis); // Debugging
 }
