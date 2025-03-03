@@ -1,7 +1,6 @@
 #include "arduino_secrets.h"
 #include "A4WBitmaps.h"
 #include "ANSICodes.h"
-#include <WDT.h> // Watchdog Timer
 #include <WiFi.h> // For WiFi connection
 #include "RTC.h" // For Real Time Clock
 #include <EEPROM.h> // Persistant value storage 1Kb max
@@ -333,48 +332,11 @@ T calculateAverage(T value, unsigned long interval, unsigned long &lastUpdateTim
 // LiveThermomiterNew, Doesn't work currently
 void LiveThermomiterNew() {
   float currentTemp = dht.readTemperature();
-  static int redIntensity = 0;
-  static int yellowIntensity = 0;
-  static int greenIntensity = 0;
-  static int cyanIntensity = 0;
-  static int blueIntensity = 0;
-  if (currentTemp >= 25) {
-    redIntensity = 100; 
-    yellowIntensity = 0;
-    greenIntensity = 0;
-    cyanIntensity = 0;
-    blueIntensity = 0;
-  } else if (currentTemp >= 22 && currentTemp < 25) { 
-    redIntensity = map(currentTemp, 22, 25, 100, 0);
-    yellowIntensity = map(currentTemp, 22, 25, 0, 100);
-    greenIntensity = 0;
-    cyanIntensity = 0;
-    blueIntensity = 0;
-  } else if (currentTemp >= 18 && currentTemp < 22) { 
-    redIntensity = 0;
-    yellowIntensity = map(currentTemp, 18, 22, 100, 0);
-    greenIntensity = map(currentTemp, 18, 22, 0, 100);
-    cyanIntensity = 0;
-    blueIntensity = 0;
-  } else if (currentTemp >= 10 && currentTemp < 18) { 
-    redIntensity = 0;
-    yellowIntensity = 0;
-    greenIntensity = map(currentTemp, 10, 18, 100, 0);
-    cyanIntensity = map(currentTemp, 10, 18, 0, 100);
-    blueIntensity = 0;
-  } else if (currentTemp <= 10) { 
-    redIntensity = 0;
-    yellowIntensity = 0;
-    greenIntensity = 0;
-    cyanIntensity = map(currentTemp, 0, 10, 100, 0);
-    blueIntensity = map(currentTemp, 0, 10, 0, 100); 
-  }
-  const int fadeStep = 5; // Adjust for faster/slower fading
-  redIntensity = constrain(redIntensity, redIntensity - fadeStep, redIntensity + fadeStep);
-  yellowIntensity = constrain(yellowIntensity, yellowIntensity - fadeStep, yellowIntensity + fadeStep);
-  greenIntensity = constrain(greenIntensity, greenIntensity - fadeStep, greenIntensity + fadeStep);
-  cyanIntensity = constrain(cyanIntensity, cyanIntensity - fadeStep, cyanIntensity + fadeStep);
-  blueIntensity = constrain(blueIntensity, blueIntensity - fadeStep, blueIntensity + fadeStep);
+  redIntensity = constrain(map(currentTemp, 22, 25, 0, 100) 0, 100);
+  yellowIntensity = (constrain(map(currentTemp, 18, 25, 0, 100) 0, 100)) - (redIntensity);
+  greenIntensity = (constrain(map(currentTemp, 10, 22, 0, 100) 0, 100)) - (yellowIntensity);
+  cyanIntensity = (constrain(map(currentTemp, 10, 22, 0, 100) 0, 100)) - (greenIntensity);
+  blueIntensity = (constrain(map(currentTemp, 0, 10, 0, 100) 0, 100))
   analogWrite(redLED, redIntensity);
   analogWrite(yellowLED, yellowIntensity);
   analogWrite(greenLED, greenIntensity);
@@ -668,7 +630,7 @@ void loop() {
             String altitudeDisplacement = String(constrain((map(bmp.readAltitude(seaLevelPressure),0,3000,0,100)),0,100));
             noiseDisplacement = String(constrain((map((MicLevels()),10,700,0,100)),0,100));
             if (isnan(dht2.readTemperature())) { // If the outdoor sensor is disconnected indicator is at 0
-              outTempDisplacement = "-5";
+              outTempDisplacement = "0";
             }
             WebClient.print("HTTP/1.1 200 OK\r\n");
             WebClient.print("Content-Type: text/html; charset=utf-8\r\n");
@@ -816,7 +778,9 @@ void loop() {
             WebClient.print("</span></div>");
             WebClient.print("<div class='data-item'><span class='data-label'>Online For:</span><span>");
             WebClient.print(secondsOnline);
-            WebClient.print(" Seconds</span></div>");
+            WebClient.print(" Seconds (");
+            WebClient.print(hoursOnline);
+            WebClient.print("H)</span></div>");
             WebClient.print("<div><button id='toggleButton'>Show Averages</button></div>");
             // Hidden Average Data, 1H
             WebClient.print("<div id='1HaverageData' style='display: none;'><h1>1 Hour Rolling Average</h1>");
