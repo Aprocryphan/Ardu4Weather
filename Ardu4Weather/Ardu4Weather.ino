@@ -62,7 +62,7 @@ const float seaLevelPressure = 101325.0;
 long long unsigned previousMillis = 0; // for NTPUpdate function
 int network = -1; // Initial network connection attempt for switch case
 long long unsigned OLEDPreviousMillis = 0; // For OLED Panel
-int OLEDPanel = -1; // Initial OLED Panel
+int OLEDPanel = 0; // Initial OLED Panel
 const int sampleWindow = 50;  // Sample window width in mS (50 mS = 20Hz)
 unsigned int sample; // Sample value from the pressure sensor
 const int NUM_READINGS = 288; // 24 hours of data, one reading every 5 minutes
@@ -72,6 +72,7 @@ long long unsigned DPPreviousMillis = 0;
 float deltaP = 0.0;
 float DP24 = 0.0;
 int SensorPreviousMillis = 0;
+char serialOutputBuffer [100]; // Buffer for serial output
 
 // Initialisation of string variables used later, Commented variables are handled by cloud.
 String formattedTime = "null";
@@ -130,12 +131,13 @@ void setup() {
   pinMode(whiteLED, OUTPUT);
   Serial.begin(57600);
   Serial1.begin(57600);
-  Serial.println("\n*************** Ardu4Weather v0.25.3 - Commit 18 *******************");
+  Serial.println("\n*************** Ardu4Weather v0.25.5 - Commit 21 *******************");
 
   // Initialize the OLED display
   display.cp437(true);
   if(!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) {   // Address 0x3C for 128x64
-    Serial.println(Cred + "SSD1306 allocation failed" + Creset);
+    sprintf(serialOutputBuffer, "%sSSD1306 allocation failed%s", Cred, Creset);
+    Serial.println(serialOutputBuffer);
     for(;;); // Don't proceed, loop forever
   }
   display.clearDisplay();
@@ -146,16 +148,19 @@ void setup() {
 
   NetworkChange(); // Connect to WiFi
   if (WiFi.status() != WL_CONNECTED) { // If the WiFi connection fails
-    Serial.println(Cred + "Failed to connect to WiFi" + Creset);
+    sprintf(serialOutputBuffer, "%sFailed to connect to WiFi%s", Cred, Creset);
+    Serial.println(serialOutputBuffer);
+    serialOutputBuffer[0] = '\0';
     display.clearDisplay();
     display.setCursor(0, 16);
     display.setTextSize(1);
     display.print("Failed to connect to WiFi");
     display.display();
   }
-  Serial.print(Cgreen + "Connected to WiFi. IP address: " + Creset);
   String localIP = WiFi.localIP().toString();
-  Serial.println(localIP);
+  sprintf(serialOutputBuffer, "%sConnected to WiFi. IP address: %s%s", Cgreen, localIP.c_str(), Creset);
+  Serial.println(serialOutputBuffer);
+  serialOutputBuffer[0] = '\0';
   WebServer.begin(); // Start website hosting server, port 8080
   DataServer.begin(); // Start data sending server, port 8081
 
@@ -163,7 +168,9 @@ void setup() {
   dht.begin();
   dht2.begin();
   if (isnan(dht.readTemperature()) || isnan(dht2.readTemperature())) { // If the DHT sensors fail to initialize
-    Serial.println(Cred + "Failed to initialize DHT sensors" + Creset);
+    sprintf(serialOutputBuffer, "%sFailed to initialize DHT sensors%s", Cred, Creset);
+    Serial.println(serialOutputBuffer);
+    serialOutputBuffer[0] = '\0';
     display.clearDisplay();
     display.setCursor(0, 16);
     display.setTextSize(1);
@@ -174,7 +181,8 @@ void setup() {
   // initialize RTC
   RTC.begin();
   if (!RTC.begin()) {
-    Serial.println(Cred + "Failed to initialize RTC" + Creset);
+    sprintf(serialOutputBuffer, "%sFailed to initialize RTC%s", Cred, Creset);
+    Serial.println(serialOutputBuffer);
     display.clearDisplay();
     display.setCursor(0, 16);
     display.setTextSize(1);
@@ -191,7 +199,9 @@ void setup() {
   { // If the unix time is less than 1000, it's not a valid time
     timeClient.update();
     unixTime = timeClient.getEpochTime();
-    Serial.println(Cred + "Failed to get proper unix time, refreshing." + Creset);
+    sprintf(serialOutputBuffer, "%sFailed to get proper unix time, refreshing.%s", Cred, Creset);
+    Serial.println(serialOutputBuffer);
+    serialOutputBuffer[0] = '\0';
     display.clearDisplay();
     display.setCursor(0, 16);
     display.setTextSize(1);
@@ -199,21 +209,25 @@ void setup() {
     display.display();
     delay(200);
   }
-  Serial.print(Cblue + "Unix Time: " + Creset);
-  Serial.println(unixTime);
+  sprintf(serialOutputBuffer, "%sUnix Time: %ul%s", Cblue, unixTime, Creset);
+  Serial.println(serialOutputBuffer);
+  serialOutputBuffer[0] = '\0';
   RTCTime timeToSet = RTCTime(unixTime);
   RTC.setTime(timeToSet);
   RTCTime currentTime;
   RTC.getTime(currentTime);
-  Serial.print(Cblue + "RTC Time: " + Creset);
-  Serial.println(currentTime);
+  const String currentTimeS = currentTime.toString();
+  sprintf(serialOutputBuffer, "%sRTC Time: %s%s", Cblue, currentTimeS.c_str(), Creset);
+  Serial.println(serialOutputBuffer);
+  serialOutputBuffer[0] = '\0';
 
   // initialize LED Matrix
   matrix.begin();
 
   // initialize BMP sensor
   if (!bmp.begin()) { // If the BMP sensor fails to initialize
-    Serial.println(Cred + "Could not find a valid BMP085/BMP180 sensor, check wiring!" + Creset);
+    sprintf(serialOutputBuffer, "%sCould not find a valid BMP085/BMP180 sensor, check wiring!%s", Cred, Creset);
+    Serial.println(serialOutputBuffer); 
     display.clearDisplay();
     display.setCursor(0, 16);
     display.setTextSize(1);
@@ -223,7 +237,9 @@ void setup() {
   }
 
   //RandomStaticLoad(); // Load a random static image onto the LED Matrix
-  Serial.println(Cgreen + "Setup Complete" + Creset);
+  sprintf(serialOutputBuffer, "%sSetup Complete%s", Cgreen, Creset);
+  Serial.println(serialOutputBuffer);
+  serialOutputBuffer[0] = '\0'; // Clear the serial output buffer by setting the first character to null
   display.clearDisplay();
 }
 
@@ -234,7 +250,9 @@ void NetworkChange() {
     switch(network) {
       case 0:
         WiFi.begin(SECRET_SSID, SECRET_OPTIONAL_PASS);
-        Serial.println(Cblue + "Changed to network 1." + Creset);
+        sprintf(serialOutputBuffer, "%sConnected To Network 1.%s", Cblue, Creset);
+        Serial.println(serialOutputBuffer);
+        serialOutputBuffer[0] = '\0';
         display.setTextSize(2);
         display.setCursor(0, 30);
         display.write(0xAE);
@@ -246,7 +264,9 @@ void NetworkChange() {
         break;
       case 1:
         WiFi.begin(SECRET_SSID_2, SECRET_OPTIONAL_PASS_2);
-        Serial.println(Cblue + "Changed to network 2." + Creset);
+        sprintf(serialOutputBuffer, "%sConnected To Network 2.%s", Cblue, Creset);
+        Serial.println(serialOutputBuffer);
+        serialOutputBuffer[0] = '\0';
         display.setTextSize(2);
         display.setCursor(0, 30);
         display.write(0xAF);
@@ -315,15 +335,15 @@ float ReadTempC() {
 // calculateAverage, A modular function that calculates the average from a number of samples
 template <typename T>
 T calculateAverage(T value, unsigned long interval, unsigned long &lastUpdateTime, T &sum, int &count, int &samples) { 
-  unsigned long currentTime = millis();
-  if (currentTime - lastUpdateTime >= interval) {
+  unsigned long currentTimeT = millis();
+  if (currentTimeT - lastUpdateTime >= interval) {
     sum += value;
     count++;
     if (count >= samples) { // Adjusts the reactiveness, samples recorded
       T average = sum / count;
       sum /= count; // Divide sum by count to keep a running average
       count = 0; 
-      lastUpdateTime = currentTime; 
+      lastUpdateTime = currentTimeT; 
     }
   }
   return sum / (count > 0 ? count : 1); // Avoid division by zero
@@ -332,11 +352,11 @@ T calculateAverage(T value, unsigned long interval, unsigned long &lastUpdateTim
 // LiveThermomiterNew, Doesn't work currently
 void LiveThermomiterNew() {
   float currentTemp = dht.readTemperature();
-  redIntensity = constrain(map(currentTemp, 22, 25, 0, 100) 0, 100);
-  yellowIntensity = (constrain(map(currentTemp, 18, 25, 0, 100) 0, 100)) - (redIntensity);
-  greenIntensity = (constrain(map(currentTemp, 10, 22, 0, 100) 0, 100)) - (yellowIntensity);
-  cyanIntensity = (constrain(map(currentTemp, 10, 22, 0, 100) 0, 100)) - (greenIntensity);
-  blueIntensity = (constrain(map(currentTemp, 0, 10, 0, 100) 0, 100))
+  int redIntensity = constrain(map(currentTemp, 22, 25, 0, 100), 0, 100);
+  int yellowIntensity = (constrain(map(currentTemp, 18, 25, 0, 100), 0, 100)) - (redIntensity);
+  int greenIntensity = (constrain(map(currentTemp, 10, 22, 0, 100), 0, 100)) - (yellowIntensity);
+  int cyanIntensity = (constrain(map(currentTemp, 10, 22, 0, 100), 0, 100)) - (greenIntensity);
+  int blueIntensity = (constrain(map(currentTemp, 0, 10, 0, 100), 0, 100));
   analogWrite(redLED, redIntensity);
   analogWrite(yellowLED, yellowIntensity);
   analogWrite(greenLED, greenIntensity);
@@ -400,13 +420,19 @@ void NTPSync() {
       int whiteLightness = map(analogRead(LightSensor), 50, 500, 10, 100);
       analogWrite(whiteLED, whiteLightness);
       unixTime = timeClient.getEpochTime();
-      Serial.print(Cblue + "Unix Time: " + Creset);
+      sprintf(serialOutputBuffer, "%sUnix Time: %s", Cblue, Creset);
+      Serial.println(serialOutputBuffer);
+      serialOutputBuffer[0] = '\0';
       Serial.println(unixTime);
-      Serial.println(Cgreen + "NTP Time Synced" + Creset);
+      sprintf(serialOutputBuffer, "%sNTP Time Synced%s", Cgreen, Creset);
+      Serial.println(serialOutputBuffer);
+      serialOutputBuffer[0] = '\0';
       RTCTime timeToSet = RTCTime(unixTime);
       RTC.setTime(timeToSet);
     } else {
-      Serial.println(Cred + "NTP Update Failed" + Creset);
+      sprintf(serialOutputBuffer, "%sNTP Update Failed%s", Cred, Creset);
+      Serial.println(serialOutputBuffer);
+      serialOutputBuffer[0] = '\0';
     }
   }
   analogWrite(whiteLED, LOW);
@@ -580,26 +606,36 @@ void loop() {
   // CSV Server Data Function, When a connection is made, data is sent. a partner python script saves the data to a CSV file.
   WiFiClient DataClient = DataServer.available(); // Check for incoming connections
   if (DataClient) { // If a client connects
-    Serial.println(Cblue + "New Data Client." + Creset);
+    sprintf(serialOutputBuffer, "%sNew Data Client.%s", Cblue, Creset);
+    Serial.println(serialOutputBuffer);
+    serialOutputBuffer[0] = '\0';
     while (DataClient.connected()) {
       if (DataClient.available()) {
         String request = DataClient.readStringUntil('\n');
-        Serial.println(Cblue + "Request received: " + request + Creset);
+        sprintf(serialOutputBuffer, "%sRequest received: %s%s", Cblue, request, Creset);
+        Serial.println(serialOutputBuffer);
+        serialOutputBuffer[0] = '\0';
         if (request == "REQUEST_DATA") {
           String data = "<START>" + dateOnly + "," + timeOnly + "," + formattedC + "," + formattedOutC + "," + formattedLightSensorData + "," + formattedHumdiditySensor + "," + formattedOutHumdiditySensor + "," + formattedPressureSensor + "," + formattedMicrophoneSensor + "," + String(secondsOnline) + "<END>";
           DataClient.print(data);
-          Serial.print(Cgreen + "Data sent to client: " + data + Creset);  // Debug statement
+          sprintf(serialOutputBuffer, "%sData sent to client: %s%s", Cgreen, data, Creset); // Debug statement
+          Serial.println(serialOutputBuffer);
+          serialOutputBuffer[0] = '\0';
           break;  // Exit the loop after sending the data once
         }
       }
     }
-    Serial.println(Cyellow + "Data Client Disconnected." + Creset);
+    sprintf(serialOutputBuffer, "%sData Client Disconnected.%s", Cyellow, Creset);
+    Serial.println(serialOutputBuffer);
+    serialOutputBuffer[0] = '\0';
   }
   
   // Website Function
   WiFiClient WebClient = WebServer.available(); // Check for incoming connections
   if (WebClient) { // If a client connects
-    Serial.println(Cblue + "New Web Client." + Creset);
+    sprintf(serialOutputBuffer, "%sNew Web Client.%s", Cblue, Creset);
+    Serial.println(serialOutputBuffer);
+    serialOutputBuffer[0] = '\0';
     while (WebClient.connected()) { // Keep connection open until client disconnects
       if (WebClient.available()) {
         int whiteLightness = map(analogRead(LightSensor), 50, 500, 10, 100);
@@ -616,19 +652,22 @@ void loop() {
             char c = WebClient.read();
             request += c;
           }
-          Serial.print(Cblue + "URL :");
-          Serial.println(url + Creset);
+          sprintf(serialOutputBuffer, "%sURL :%s%s", Cblue, url, Creset);
+          Serial.println(serialOutputBuffer);
+          serialOutputBuffer[0] = '\0';
           if (url == "/") {
-            Serial.println(Cblue + "Main Page Requested" + Creset);
+            sprintf(serialOutputBuffer, "%sMain Page Requested%s", Cblue, Creset);
+            Serial.println(serialOutputBuffer);
+            serialOutputBuffer[0] = '\0';
             float pressure = bmp.readPressure();
-            inTempDisplacement = String(constrain((map(dht.readTemperature(),-5,30,0,100)),0,100)); // Displacement for the indicators on the bars, maps and constrains input between -50 and 13300
-            outTempDisplacement = String(constrain((map(dht2.readTemperature(),-5,30,0,100)),0,100));
-            String lightDisplacement = String(constrain((map((analogRead(LightSensor) * 2),0,1000,0,100)),0,100));
-            inHumidityDisplacement = String(constrain((map(dht.readHumidity(),0,100,0,100)),0,100));
-            outHumidityDisplacement = String(constrain((map(dht2.readHumidity(),0,100,0,100)),0,100));
-            pressureDisplacement = String(constrain((map((pressure / 100),980,1030,0,100)),0,100));
-            String altitudeDisplacement = String(constrain((map(bmp.readAltitude(seaLevelPressure),0,3000,0,100)),0,100));
-            noiseDisplacement = String(constrain((map((MicLevels()),10,700,0,100)),0,100));
+            inTempDisplacement = String(constrain((map(dht.readTemperature(), -5, 30, 0, 100)), 0, 100)); // Displacement for the indicators on the bars, maps and constrains input between -50 and 13300
+            outTempDisplacement = String(constrain((map(dht2.readTemperature(), -5, 30, 0, 100)), 0, 100));
+            String lightDisplacement = String(constrain((map((analogRead(LightSensor) * 2), 0, 1000, 0, 100)), 0, 100));
+            inHumidityDisplacement = String(constrain((map(dht.readHumidity(), 0, 100, 0, 100)), 0, 100));
+            outHumidityDisplacement = String(constrain((map(dht2.readHumidity(), 0, 100, 0, 100)), 0, 100));
+            pressureDisplacement = String(constrain((map((pressure / 100), 980, 1030, 0, 100)), 0, 100));
+            String altitudeDisplacement = String(constrain((map(bmp.readAltitude(seaLevelPressure), 0, 3000, 0, 100)), 0, 100));
+            noiseDisplacement = String(constrain((map((MicLevels()), 10, 700, 0, 100)), 0, 100));
             if (isnan(dht2.readTemperature())) { // If the outdoor sensor is disconnected indicator is at 0
               outTempDisplacement = "0";
             }
@@ -872,7 +911,9 @@ void loop() {
             WebClient.flush();
             break;
           } else if (url == "/about") {
-            Serial.println(Cblue + "About Page Requested" + Creset);
+            sprintf(serialOutputBuffer, "%sAbout Page Requested%s", Cblue, Creset);
+            Serial.println(serialOutputBuffer);
+            serialOutputBuffer[0] = '\0';
             WebClient.print("HTTP/1.1 200 OK\r\n");
             WebClient.print("Content-Type: text/html; charset=utf-8\r\n");
             WebClient.print("X-Content-Type-Options: nosniff\r\n");
@@ -947,7 +988,9 @@ void loop() {
             WebClient.flush();
             break;
           } else if (url == "/data") {
-            Serial.println(Cblue + "Data Page Requested" + Creset);
+            sprintf(serialOutputBuffer, "%sData Page Requested%s", Cblue, Creset);
+            Serial.println(serialOutputBuffer);
+            serialOutputBuffer[0] = '\0';
             WebClient.print("HTTP/1.1 200 OK\r\n");
             WebClient.print("Content-Type: text/html; charset=utf-8\r\n");
             WebClient.print("X-Content-Type-Options: nosniff\r\n");
@@ -992,7 +1035,9 @@ void loop() {
             WebClient.flush();
             break;
           } else if (url == "/aprocryphan") {
-            Serial.println(Cblue + "About Apro Page Requested" + Creset);
+            sprintf(serialOutputBuffer, "%sAbout Apro Page Requested%s", Cblue, Creset);
+            Serial.println(serialOutputBuffer);
+            serialOutputBuffer[0] = '\0';
             WebClient.print("HTTP/1.1 200 OK\r\n");
             WebClient.print("Content-Type: text/html; charset=utf-8\r\n");
             WebClient.print("X-Content-Type-Options: nosniff\r\n");
@@ -1040,7 +1085,9 @@ void loop() {
             WebClient.flush();
             break;
           } else { // Serve error 404 page
-            Serial.println(Cyellow + "Error 404" + Creset);
+            sprintf(serialOutputBuffer, "%sError 404%s", Cyellow, Creset);
+            Serial.println(serialOutputBuffer);
+            serialOutputBuffer[0] = '\0';
             WebClient.print("HTTP/1.1 200 OK\r\n");
             WebClient.print("Content-Type: text/html; charset=utf-8\r\n");
             WebClient.print("X-Content-Type-Options: nosniff\r\n");
@@ -1090,7 +1137,9 @@ void loop() {
       }
     }
     WebClient.stop(); // Disconnect the client because all data has been sent
-    Serial.println(Cyellow + "Web Client disconnected." + Creset);
+    sprintf(serialOutputBuffer, "%sWeb Client disconnected.%s", Cyellow, Creset);
+    Serial.println(serialOutputBuffer);
+    serialOutputBuffer[0] = '\0';
     analogWrite(whiteLED, LOW);
     url = ""; // Empty out for next connection request
     referrer = ""; // Empty out for next connection request
