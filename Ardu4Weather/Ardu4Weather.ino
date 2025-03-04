@@ -53,62 +53,75 @@ const int LightSensor = A3;
 //const int Placeholder = A4;
 //const int Placeholder = A5;
 
+// Initialisation of variables used later
+const int sampleWindow = 50;  // Sample window width in mS (50 mS = 20Hz)
+const int NUM_READINGS = 288; // 24 hours of data, one reading every 5 minutes
+unsigned int sample; // Sample value from the pressure sensor
+int network = -1; // Initial network connection attempt for switch case
+int OLEDPanel = 0; // Initial OLED Panel
+int readingIndex = 0; // Keep track of the current position in the array
+int SensorPreviousMillis = 0;
+int formattedLightSensorData = 0;
+int formattedMicrophoneSensor = 0;
+int signalStrength = 0;
+int formattedMagnetSensor = 0;
+int inTempDisplacement = 0;
+int outTempDisplacement = 0;
+int lightDisplacement = 0;
+int inHumidityDisplacement = 0;
+int outHumidityDisplacement = 0;
+int pressureDisplacement = 0;
+int altitudeDisplacement = 0;
+int noiseDisplacement = 0;
+int oldestIndex = 0;
+int whiteLightness = 0;
+
 const float offset = 0.0; // Offset For Temp Sensor (adjust as needed)
 const float gain = 1.00; // Gain For Temp Sensor (adjust as needed)
+const float seaLevelPressure = 101325.0;
 float Temp = 0.0;
 float TempAverage = 0.0; // Stores average temperature
 float LightAverage = 0.0; // Stores average light level
-const float seaLevelPressure = 101325.0;
-long long unsigned previousMillis = 0; // for NTPUpdate function
-int network = -1; // Initial network connection attempt for switch case
-long long unsigned OLEDPreviousMillis = 0; // For OLED Panel
-int OLEDPanel = 0; // Initial OLED Panel
-const int sampleWindow = 50;  // Sample window width in mS (50 mS = 20Hz)
-unsigned int sample; // Sample value from the pressure sensor
-const int NUM_READINGS = 288; // 24 hours of data, one reading every 5 minutes
-float pressureReadings[NUM_READINGS]; // Array to store pressure readings
-int readingIndex = 0; // Keep track of the current position in the array
-long long unsigned DPPreviousMillis = 0;
 float deltaP = 0.0;
 float DP24 = 0.0;
-int SensorPreviousMillis = 0;
-char serialOutputBuffer [100]; // Buffer for serial output
+float pressure = 0.0;
+float formattedC = 0.0;
+float formattedF = 0.0;
+float formattedOutF = 0.0;
+float formattedHumiditySensor = 0.0;
+float formattedPressureSensor = 0.0;
+float formattedOutC = 0.0;
+float formattedOutHumiditySensor = 0.0;
+float altitude = 0.0;
+float pressureReadings[NUM_READINGS]; // Array to store pressure readings
 
-// Initialisation of string variables used later, Commented variables are handled by cloud.
-String formattedTime = "null";
-String dateOnly = "null";
-String timeOnly = "null";
-String formattedC = "null";
-String formattedF = "null";
-String formattedOutF = "null";
-String formattedLightSensorData = "null";
-String formattedHumdiditySensor = "null";
-String formattedPressureSensor = "null";
-String formattedMicrophoneSensor = "null";
-String secondsOnline = "null";
-String hoursOnline = "null";
-String daysOnline= "null";
-String localIP = "null";
-String subnetMask = "null";
-String gatewayIP = "null";
-String signalStrength = "null";
-String formattedOutC = "null";
-String formattedOutHumdiditySensor = "null";
-String formattedMagnetSensor = "null";
-String altitude = "null";
-String NTPIP = "null";
-String url = "";
-String referrer = "";
-String inTempDisplacement = "0";
-String outTempDisplacement = "0";
-String lightDisplacement = "0";
-String inHumidityDisplacement = "0";
-String outHumidityDisplacement = "0";
-String pressureDisplacement = "0";
-String altitudeDisplacement = "0";
-String noiseDisplacement = "0";
-// ⚡☔☁️🌨️🌧️🌩️⛈️🌦️🌥️⛅🌤️🌡️🔥❄️🌫️🌙☀️
-/*
+unsigned long long previousMillis = 0; // for NTPUpdate function
+unsigned long long OLEDPreviousMillis = 0; // For OLED Panel
+unsigned long long DPPreviousMillis = 0;
+unsigned long long secondsOnline = 0;
+
+const char* weatherEmojis[] = { "⚡", "☔", "☁️", "🌨️", "🌧️", "🌩️", "⛈️", "🌦️", "🌥️", "⛅", "🌤️", "🌡️", "🔥", "❄️", "🌫️", "🌙", "☀️" };
+char serialOutputBuffer [128]; // Buffer for serial output
+char formattedTime[23] = "null"; // XX-XX-XX / XX:XX:XX\0
+char dateOnly[11] = "null"; // XX-XX-XX\0
+char timeOnly[9] = "null"; // XX:XX:XX\0
+char hoursOnline[10] = "null"; // XX.XX\0
+char daysOnline[10] = "null"; // XX.XX\0
+char localIP[21] = "null"; // XXX.XXX.XXX.XXX\0
+char subnetMask[21] = "null"; // XXX.XXX.XXX.XXX\0
+char gatewayIP[21] = "null"; // XXX.XXX.XXX.XXX\0
+char NTPIP[21] = "null"; // XXX.XXX.XXX.XXX\0
+char data[128] = "null"; // <START>XX-XX-XX,XX:XX:XX,XX.X,XX.X,XXX,XX.X,XX.X,XX.X,XXX,XXXXX<END>\0
+//char url[128] = ""; // XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX\0
+//char referrer[128] = ""; // XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX\0
+//char request[2048] = ""; // XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX\0
+
+String stringTime = "null";
+String url = "null";
+String referrer = "null";
+String request = "null";
+
+/* Colour Palette
 #333333
 #434B4F
 #53636A
@@ -131,7 +144,7 @@ void setup() {
   pinMode(whiteLED, OUTPUT);
   Serial.begin(57600);
   Serial1.begin(57600);
-  Serial.println("\n*************** Ardu4Weather v0.25.5 - Commit 21 *******************");
+  Serial.println("\n*************** Ardu4Weather v0.25.6 - Commit 22 *******************");
 
   // Initialize the OLED display
   display.cp437(true);
@@ -157,8 +170,9 @@ void setup() {
     display.print("Failed to connect to WiFi");
     display.display();
   }
-  String localIP = WiFi.localIP().toString();
-  sprintf(serialOutputBuffer, "%sConnected to WiFi. IP address: %s%s", Cgreen, localIP.c_str(), Creset);
+  strncpy(localIP, WiFi.localIP().toString().c_str(), sizeof(localIP) - 1);
+  localIP[sizeof(localIP) - 1] = '\0'; // Ensure null termination
+  sprintf(serialOutputBuffer, "%sConnected to WiFi. IP address: %s%s", Cgreen, localIP, Creset);
   Serial.println(serialOutputBuffer);
   serialOutputBuffer[0] = '\0';
   WebServer.begin(); // Start website hosting server, port 8080
@@ -192,8 +206,6 @@ void setup() {
   }
   timeClient.begin();
   timeClient.update();
-  // NTPIP = String(timeClient.getNTPserverIP());
-  NTPIP = String("null"); // Set to null, as the NTP server IP is not used yet
   unixTime = timeClient.getEpochTime();
   while (unixTime < 1000)
   { // If the unix time is less than 1000, it's not a valid time
@@ -209,15 +221,15 @@ void setup() {
     display.display();
     delay(200);
   }
-  sprintf(serialOutputBuffer, "%sUnix Time: %ul%s", Cblue, unixTime, Creset);
+  sprintf(serialOutputBuffer, "%sUnix Time: %lu%s", Cblue, unixTime, Creset);
   Serial.println(serialOutputBuffer);
   serialOutputBuffer[0] = '\0';
   RTCTime timeToSet = RTCTime(unixTime);
   RTC.setTime(timeToSet);
   RTCTime currentTime;
   RTC.getTime(currentTime);
-  const String currentTimeS = currentTime.toString();
-  sprintf(serialOutputBuffer, "%sRTC Time: %s%s", Cblue, currentTimeS.c_str(), Creset);
+  String currentTimeS = String(currentTime);
+  sprintf(serialOutputBuffer, "%sRTC Time: %s%s", Cblue, currentTimeS, Creset);
   Serial.println(serialOutputBuffer);
   serialOutputBuffer[0] = '\0';
 
@@ -257,9 +269,12 @@ void NetworkChange() {
         display.setCursor(0, 30);
         display.write(0xAE);
         display.display();
-        localIP = WiFi.localIP().toString();
-        subnetMask = WiFi.subnetMask().toString();
-        gatewayIP = WiFi.gatewayIP().toString();
+        strncpy(localIP, WiFi.localIP().toString().c_str(), sizeof(localIP) - 1);
+        localIP[sizeof(localIP) - 1] = '\0'; // Ensure null termination
+        strncpy(subnetMask, WiFi.subnetMask().toString().c_str(), sizeof(subnetMask) - 1);
+        subnetMask[sizeof(subnetMask) - 1] = '\0'; // Ensure null termination
+        strncpy(gatewayIP, WiFi.gatewayIP().toString().c_str(), sizeof(gatewayIP) - 1);
+        gatewayIP[sizeof(gatewayIP) - 1] = '\0'; // Ensure null termination
         delay(100);
         break;
       case 1:
@@ -271,9 +286,12 @@ void NetworkChange() {
         display.setCursor(0, 30);
         display.write(0xAF);
         display.display();
-        localIP = WiFi.localIP().toString();
-        subnetMask = WiFi.subnetMask().toString();
-        gatewayIP = WiFi.gatewayIP().toString();
+        strncpy(localIP, WiFi.localIP().toString().c_str(), sizeof(localIP) - 1);
+        localIP[sizeof(localIP) - 1] = '\0'; // Ensure null termination
+        strncpy(subnetMask, WiFi.subnetMask().toString().c_str(), sizeof(subnetMask) - 1);
+        subnetMask[sizeof(subnetMask) - 1] = '\0'; // Ensure null termination
+        strncpy(gatewayIP, WiFi.gatewayIP().toString().c_str(), sizeof(gatewayIP) - 1);
+        gatewayIP[sizeof(gatewayIP) - 1] = '\0'; // Ensure null termination
         delay(100);
         break;
     }
@@ -440,18 +458,18 @@ void NTPSync() {
 
 float DeltaPressure24() {
   if (millis() - DPPreviousMillis >= 500000) {
-    previousMillis = millis(); // Fixing to use the current millis() for accurate timing
-    float currentPressure = bmp.readPressure(); // Get current pressure reading
-    pressureReadings[readingIndex] = currentPressure;   // Store the new reading in the array
+    DPPreviousMillis = millis(); // Fixing to use the current millis() for accurate timing
+    pressure = bmp.readPressure(); // Get current pressure reading
+    pressureReadings[readingIndex] = pressure;   // Store the new reading in the array
     readingIndex = (readingIndex + 1) % NUM_READINGS; // Wrap around the array
-    int oldestIndex = (readingIndex + NUM_READINGS - 1) % NUM_READINGS; // Index of the oldest reading
-    float deltaP = currentPressure - pressureReadings[oldestIndex]; // Calculate the change in pressure
+    oldestIndex = (readingIndex + NUM_READINGS - 1) % NUM_READINGS; // Index of the oldest reading
+    deltaP = pressure - pressureReadings[oldestIndex]; // Calculate the change in pressure
   }
   return deltaP;
 }
 
 // OLEDHeader, inputs the header of the oled to buffer for displaying, shows some symbols and the current ntp date and time
-void OLEDHeader(String dateOnly, String timeOnly) {
+void OLEDHeader(char dateOnly[], char timeOnly[]) {
   display.setTextSize(2);
   display.setCursor(0, 0);
   display.write(0xB2);
@@ -464,48 +482,59 @@ void OLEDHeader(String dateOnly, String timeOnly) {
 }
 
 // OLEDPanel1, Shows a few different readings from the sensors without having to access the website, useful for debugging.
-void OLEDPanel1(String formattedC, String formattedLightSensorData, String formattedHumdiditySensor, String formattedPressureSensor, String formattedMicrophoneSensor, String hoursOnline) {
+void OLEDPanel1(float formattedC, int formattedLightSensorData, float formattedHumdiditySensor, float formattedPressureSensor, int formattedMicrophoneSensor, char hoursOnline[]) {
   display.setTextSize(1);
   display.setCursor(110, 16);
   display.print("1/3");
   display.setCursor(0, 16); 
-  display.print("Temp: " + formattedC);
+  sprintf(serialOutputBuffer, "Temp: %.1f", formattedC);
+  display.print(serialOutputBuffer);
   display.write(0xF8);
   display.print("C");
   display.setCursor(0, 24); 
-  display.println("Bright: " + formattedLightSensorData + " Lm");
+  sprintf(serialOutputBuffer, "Light: %d Lm", formattedLightSensorData);
+  display.println(serialOutputBuffer);
   display.setCursor(0, 32); 
-  display.println("Humid: " + formattedHumdiditySensor + "%");
+  sprintf(serialOutputBuffer, "Humid: %.1f%%", formattedHumdiditySensor);
+  display.println(serialOutputBuffer);
   display.setCursor(0, 40); 
-  display.println("Pressure: " + formattedPressureSensor + " mBar");
+  sprintf(serialOutputBuffer, "Pressure: %.2f mBar", formattedPressureSensor);
+  display.println(serialOutputBuffer);
   display.setCursor(0, 48); 
-  display.println("Noise: " + formattedMicrophoneSensor + " U");
+  sprintf(serialOutputBuffer, "Noise: %d U", formattedMicrophoneSensor);
+  display.println(serialOutputBuffer);
   display.setCursor(0, 56); 
-  display.println("Hours: " + hoursOnline + "H");
+  sprintf(serialOutputBuffer, "Hours: %.2f H", hoursOnline);
+  display.println(serialOutputBuffer);
 }
 
 // OLEDPanel2, Shows a few different more readings that couldnt fit on 1 from the sensors without having to access the website, useful for debugging.
-void OLEDPanel2(String formattedOutC, String formattedOutHumdiditySensor, String formattedMagnetSensor, String altitude, String daysOnline) {
+void OLEDPanel2(float formattedOutC, float formattedOutHumiditySensor, int formattedMagnetSensor, float altitude, char daysOnline[]) {
   display.setTextSize(1);
   display.setCursor(110, 16);
   display.print("2/3");
-  display.setCursor(0, 16); 
-  display.print("OTemp: " + formattedOutC);
+  display.setCursor(0, 16);
+  sprintf(serialOutputBuffer, "OTemp: %.1f", formattedOutC);
+  display.print(serialOutputBuffer);
   display.write(0xF8);
   display.print("C");
   display.setCursor(0, 24); 
-  display.println("OHumid: " + formattedOutHumdiditySensor + "%");
+  sprintf(serialOutputBuffer, "OHumid: %.1f%%", formattedOutHumiditySensor);
+  display.println(serialOutputBuffer);
   display.setCursor(0, 32); 
-  display.println("Magnet: " + formattedMagnetSensor);
+  sprintf(serialOutputBuffer, "Magnet: %d", formattedMagnetSensor);
+  display.println(serialOutputBuffer);
   display.setCursor(0, 40); 
-  display.println("Altitude: " + altitude + "m");
+  sprintf(serialOutputBuffer, "Altitude: %.2f m", altitude);
+  display.println(serialOutputBuffer);
   display.setCursor(0, 48); 
-  display.println("Days: " + daysOnline + "D");
+  sprintf(serialOutputBuffer, "Days: %sD", daysOnline);
+  display.println(serialOutputBuffer);
   display.setCursor(0, 56); 
 }
 
 // OLEDPanel3, Shows a few different network statistics, useful for debugging
-void OLEDPanel3(String localIP, String subnetMask, String gatewayIP, String NTPIP, String signalStrength, int previousMillis, float DP24) {
+void OLEDPanel3(String localIP, String subnetMask, String gatewayIP, String NTPIP, int signalStrength, unsigned long previousMillis, float DP24) {
   display.setTextSize(1);
   display.setCursor(110, 16);
   display.print("3/3");
@@ -518,10 +547,14 @@ void OLEDPanel3(String localIP, String subnetMask, String gatewayIP, String NTPI
   display.setCursor(0, 40);
   display.println("NTPIP: " + NTPIP);
   display.setCursor(0, 48);
-  display.println("Strength: " + signalStrength);
+  sprintf(serialOutputBuffer, "Signal: %ddBm", signalStrength);
+  display.println(serialOutputBuffer);
   display.setCursor(0, 56);
-  //display.println("NTP UP: " + previousMillis);
-  display.println("DP: " + String(DP24));
+  sprintf(serialOutputBuffer, "NTP UP: %lu", previousMillis);
+  display.println(serialOutputBuffer);
+  display.setCursor(0, 64);
+  sprintf(serialOutputBuffer, "DP: %.2f", DP24);
+  display.println(serialOutputBuffer);
 }
 
 int MicLevels() {
@@ -556,31 +589,31 @@ void loop() {
   // Time and Date Data
   RTCTime currentTime;
   RTC.getTime(currentTime);
-  String stringTime = String(currentTime);
+  stringTime = String(currentTime);
   int tPosition = stringTime.indexOf('T');
-  timeOnly = stringTime.substring(tPosition + 1);
-  dateOnly = stringTime.substring(0, tPosition);
-  secondsOnline = String((millis() / 1000));
-  hoursOnline = String(float(millis() / 3600000.0));
-  daysOnline = String(float(millis() / 86400000.0));
+  sprintf(timeOnly, "%s", stringTime.substring(tPosition + 1).c_str());
+  sprintf(dateOnly, "%s", stringTime.substring(0, tPosition).c_str());
+  secondsOnline = millis() / 1000;
+  sprintf(hoursOnline, "%.2f", (millis() / 3600000.0));
+  sprintf(daysOnline, "%.2f", (millis() / 86400000.0));
 
   // Sensor Data
   if (millis() - SensorPreviousMillis >= 5000) {
     SensorPreviousMillis = millis();
-    formattedTime = String(dateOnly + " / " + timeOnly);
-    formattedC = String(dht.readTemperature()); 
-    formattedF = String((dht.readTemperature() * 9/5) + 32);
-    formattedOutC = String(dht2.readTemperature()); 
-    formattedOutF = String((dht2.readTemperature() * 9/5) + 32);
-    formattedLightSensorData = String((analogRead(LightSensor) * 2)); 
-    formattedHumdiditySensor = String(dht.readHumidity());
-    formattedOutHumdiditySensor = String(dht2.readHumidity());
-    float pressure = bmp.readPressure();
-    formattedPressureSensor = String(pressure / 100);
-    formattedMicrophoneSensor = String(MicLevels());
-    formattedMagnetSensor = String(digitalRead(magneticSensor) == 1 ? 0 : 1);
-    altitude = String(bmp.readAltitude(seaLevelPressure));
-    signalStrength = String(WiFi.RSSI());
+    sprintf(formattedTime, "%s / %s", dateOnly, timeOnly);
+    formattedC = dht.readTemperature();
+    formattedOutC = dht2.readTemperature();
+    formattedF = (dht.readTemperature() * 9.0/5.0) + 32.0;
+    formattedOutF = (dht2.readTemperature() * 9.0/5.0) + 32.0;
+    formattedLightSensorData = analogRead(LightSensor) * 2;
+    formattedHumiditySensor = dht.readHumidity();
+    formattedOutHumiditySensor = dht2.readHumidity();
+    pressure = bmp.readPressure();
+    formattedPressureSensor = pressure / 100;
+    formattedMicrophoneSensor = MicLevels();
+    formattedMagnetSensor = (digitalRead(magneticSensor) == 1 ? 0 : 1);
+    altitude = bmp.readAltitude(seaLevelPressure);
+    signalStrength = WiFi.RSSI();
   }
 
   // OLED Data Display Function
@@ -592,10 +625,10 @@ void loop() {
   OLEDHeader(dateOnly, timeOnly);
   switch (OLEDPanel) {
     case 0:
-      OLEDPanel1(formattedC, formattedLightSensorData, formattedHumdiditySensor, formattedPressureSensor, formattedMicrophoneSensor, hoursOnline);
+      OLEDPanel1(formattedC, formattedLightSensorData, formattedHumiditySensor, formattedPressureSensor, formattedMicrophoneSensor, hoursOnline);
       break;
     case 1:
-      OLEDPanel2(formattedOutC, formattedOutHumdiditySensor, formattedMagnetSensor, altitude, daysOnline);
+      OLEDPanel2(formattedOutC, formattedOutHumiditySensor, formattedMagnetSensor, altitude, daysOnline);
       break;
     case 2:
       OLEDPanel3(localIP, subnetMask, gatewayIP, NTPIP, signalStrength, previousMillis, DP24);
@@ -616,7 +649,7 @@ void loop() {
         Serial.println(serialOutputBuffer);
         serialOutputBuffer[0] = '\0';
         if (request == "REQUEST_DATA") {
-          String data = "<START>" + dateOnly + "," + timeOnly + "," + formattedC + "," + formattedOutC + "," + formattedLightSensorData + "," + formattedHumdiditySensor + "," + formattedOutHumdiditySensor + "," + formattedPressureSensor + "," + formattedMicrophoneSensor + "," + String(secondsOnline) + "<END>";
+          sprintf(data, "<START>%s,%s,%.1f,%.1f,%d,%.1f,%.2f,%.2f,%d,%lu<END>", dateOnly, timeOnly, formattedC, formattedOutC, formattedLightSensorData, formattedHumiditySensor, formattedOutHumiditySensor, formattedPressureSensor, formattedMicrophoneSensor, secondsOnline);
           DataClient.print(data);
           sprintf(serialOutputBuffer, "%sData sent to client: %s%s", Cgreen, data, Creset); // Debug statement
           Serial.println(serialOutputBuffer);
@@ -638,7 +671,7 @@ void loop() {
     serialOutputBuffer[0] = '\0';
     while (WebClient.connected()) { // Keep connection open until client disconnects
       if (WebClient.available()) {
-        int whiteLightness = map(analogRead(LightSensor), 50, 500, 10, 100);
+        whiteLightness = map(analogRead(LightSensor), 50, 500, 10, 100);
         analogWrite(whiteLED, whiteLightness); // Indicate that data transfer has started
         char c = WebClient.read(); // Read and save incoming data, initial connection including subpage request
         referrer += c;
@@ -659,17 +692,17 @@ void loop() {
             sprintf(serialOutputBuffer, "%sMain Page Requested%s", Cblue, Creset);
             Serial.println(serialOutputBuffer);
             serialOutputBuffer[0] = '\0';
-            float pressure = bmp.readPressure();
-            inTempDisplacement = String(constrain((map(dht.readTemperature(), -5, 30, 0, 100)), 0, 100)); // Displacement for the indicators on the bars, maps and constrains input between -50 and 13300
-            outTempDisplacement = String(constrain((map(dht2.readTemperature(), -5, 30, 0, 100)), 0, 100));
-            String lightDisplacement = String(constrain((map((analogRead(LightSensor) * 2), 0, 1000, 0, 100)), 0, 100));
-            inHumidityDisplacement = String(constrain((map(dht.readHumidity(), 0, 100, 0, 100)), 0, 100));
-            outHumidityDisplacement = String(constrain((map(dht2.readHumidity(), 0, 100, 0, 100)), 0, 100));
-            pressureDisplacement = String(constrain((map((pressure / 100), 980, 1030, 0, 100)), 0, 100));
-            String altitudeDisplacement = String(constrain((map(bmp.readAltitude(seaLevelPressure), 0, 3000, 0, 100)), 0, 100));
-            noiseDisplacement = String(constrain((map((MicLevels()), 10, 700, 0, 100)), 0, 100));
+            pressure = bmp.readPressure();
+            inTempDisplacement = constrain((map(dht.readTemperature(), -5, 30, 0, 100)), 0, 100); // Displacement for the indicators on the bars, maps and constrains input between -50 and 13300
+            outTempDisplacement = constrain((map(dht2.readTemperature(), -5, 30, 0, 100)), 0, 100);
+            lightDisplacement = constrain((map((analogRead(LightSensor) * 2), 0, 1000, 0, 100)), 0, 100);
+            inHumidityDisplacement = constrain((map(dht.readHumidity(), 0, 100, 0, 100)), 0, 100);
+            outHumidityDisplacement = constrain((map(dht2.readHumidity(), 0, 100, 0, 100)), 0, 100);
+            pressureDisplacement = constrain((map((pressure / 100), 980, 1030, 0, 100)), 0, 100);
+            altitudeDisplacement = constrain((map(bmp.readAltitude(seaLevelPressure), 0, 3000, 0, 100)), 0, 100);
+            noiseDisplacement = constrain((map((MicLevels()), 10, 700, 0, 100)), 0, 100);
             if (isnan(dht2.readTemperature())) { // If the outdoor sensor is disconnected indicator is at 0
-              outTempDisplacement = "0";
+              outTempDisplacement = 0;
             }
             WebClient.print("HTTP/1.1 200 OK\r\n");
             WebClient.print("Content-Type: text/html; charset=utf-8\r\n");
@@ -751,7 +784,9 @@ void loop() {
             WebClient.print("&deg;F</span></div>");
             WebClient.print("<div class='slider-container'>");
             WebClient.print("<span class='slider-text left'>-5&deg;C</span>");
-            WebClient.print("<div class='slider-bar'><div class='in-temp-indicator' style='left: " + inTempDisplacement + "%;'></div></div>");
+            WebClient.print("<div class='slider-bar'><div class='in-temp-indicator' style='left: ");
+            WebClient.print(inTempDisplacement);
+            WebClient.print("%;'></div></div>");
             WebClient.print("<span class='slider-text right'>30&deg;C</span> ");
             WebClient.print("</div>");
             WebClient.print("<div class='data-item'><span class='data-label'>Outdoor Temperature:</span><span>");
@@ -761,7 +796,9 @@ void loop() {
             WebClient.print("&deg;F</span></div>");
             WebClient.print("<div class='slider-container'>");
             WebClient.print("<span class='slider-text left'>-5&deg;C</span>");
-            WebClient.print("<div class='slider-bar'><div class='out-temp-indicator' style='left: " + outTempDisplacement + "%;'></div></div>");
+            WebClient.print("<div class='slider-bar'><div class='out-temp-indicator' style='left: ");
+            WebClient.print(outTempDisplacement);
+            WebClient.print("%;'></div></div>");
             WebClient.print("<span class='slider-text right'>30&deg;C</span> ");
             WebClient.print("</div>");
             WebClient.print("<div class='data-item'><span class='data-label'>Brightness:</span><span>");
@@ -769,23 +806,29 @@ void loop() {
             WebClient.print(" Lumens</span></div>");
             WebClient.print("<div class='slider-container'>");
             WebClient.print("<span class='slider-text light-left'>0 Lm</span>");
-            WebClient.print("<div class='light-slider-bar'><div class='light-indicator' style='left: " + lightDisplacement + "%;'></div></div>");
+            WebClient.print("<div class='light-slider-bar'><div class='light-indicator' style='left: ");
+            WebClient.print(lightDisplacement);
+            WebClient.print("%;'></div></div>");
             WebClient.print("<span class='slider-text light-right'>1000 Lm</span> ");
             WebClient.print("</div>");
             WebClient.print("<div class='data-item'><span class='data-label'>Indoor Humidity:</span><span>");
-            WebClient.print(formattedHumdiditySensor);
+            WebClient.print(formattedHumiditySensor);
             WebClient.print("%</span></div>");
             WebClient.print("<div class='slider-container'>");
             WebClient.print("<span class='slider-text humid-left'>0%</span>");
-            WebClient.print("<div class='humid-slider-bar'><div class='in-humidity-indicator' style='left: " + inHumidityDisplacement + "%;'></div></div>");
+            WebClient.print("<div class='humid-slider-bar'><div class='in-humidity-indicator' style='left: ");
+            WebClient.print(inHumidityDisplacement);
+            WebClient.print("%;'></div></div>");
             WebClient.print("<span class='slider-text humid-right'>100%</span> ");
             WebClient.print("</div>");
             WebClient.print("<div class='data-item'><span class='data-label'>Outdoor Humidity:</span><span>");
-            WebClient.print(formattedOutHumdiditySensor);
+            WebClient.print(formattedOutHumiditySensor);
             WebClient.print("%</span></div>");
             WebClient.print("<div class='slider-container'>");
             WebClient.print("<span class='slider-text humid-left'>0%</span>");
-            WebClient.print("<div class='humid-slider-bar'><div class='out-humidity-indicator' style='left: " + outHumidityDisplacement + "%;'></div></div>");
+            WebClient.print("<div class='humid-slider-bar'><div class='out-humidity-indicator' style='left: ");
+            WebClient.print(outHumidityDisplacement);
+            WebClient.print("%;'></div></div>");
             WebClient.print("<span class='slider-text humid-right'>100%</span> ");
             WebClient.print("</div>");
             WebClient.print("<div class='data-item'><span class='data-label'>Pressure:</span><span>");
@@ -793,7 +836,9 @@ void loop() {
             WebClient.print(" mBar</span></div>");
             WebClient.print("<div class='slider-container'>");
             WebClient.print("<span class='slider-text left'>980 mBar</span>");
-            WebClient.print("<div class='slider-bar'><div class='pressure-indicator' style='left: " + pressureDisplacement + "%;'></div></div>");
+            WebClient.print("<div class='slider-bar'><div class='pressure-indicator' style='left: ");
+            WebClient.print(pressureDisplacement);
+            WebClient.print("%;'></div></div>");
             WebClient.print("<span class='slider-text right'>1030 mBar</span> ");
             WebClient.print("</div>");
             WebClient.print("<div class='data-item'><span class='data-label'>Approx Altitude:</span><span>");
@@ -801,7 +846,9 @@ void loop() {
             WebClient.print(" m</span></div>");
             WebClient.print("<div class='slider-container'>");
             WebClient.print("<span class='slider-text altitude-left'>0 m</span>");
-            WebClient.print("<div class='altitude-slider-bar'><div class='altitude-indicator' style='left: " + altitudeDisplacement + "%;'></div></div>");
+            WebClient.print("<div class='altitude-slider-bar'><div class='altitude-indicator' style='left: ");
+            WebClient.print(altitudeDisplacement);
+            WebClient.print("%;'></div></div>");
             WebClient.print("<span class='slider-text altitude-right'>3000 m</span> ");
             WebClient.print("</div>");
             WebClient.print("<div class='data-item'><span class='data-label'>Noise Level:</span><span>");
@@ -809,7 +856,9 @@ void loop() {
             WebClient.print(" Units</span></div>");
             WebClient.print("<div class='slider-container'>");
             WebClient.print("<span class='slider-text noise-left'>10 U</span>");
-            WebClient.print("<div class='noise-slider-bar'><div class='noise-indicator' style='left: " + noiseDisplacement + "%;'></div></div>");
+            WebClient.print("<div class='noise-slider-bar'><div class='noise-indicator' style='left: ");
+            WebClient.print(noiseDisplacement);
+            WebClient.print("%;'></div></div>");
             WebClient.print("<span class='slider-text noise-right'>700 U</span> ");
             WebClient.print("</div>");
             WebClient.print("<div class='data-item'><span class='data-label'>Presence Of Strong Magnetic Field:</span><span>");
@@ -832,7 +881,7 @@ void loop() {
             WebClient.print(formattedLightSensorData);
             WebClient.print(" Lumens</span></div>");
             WebClient.print("<div class='data-item'><span class='data-label'>Humidity:</span><span>");
-            WebClient.print(formattedHumdiditySensor);
+            WebClient.print(formattedHumiditySensor);
             WebClient.print("%</span></div>");
             WebClient.print("<div class='data-item'><span class='data-label'>Pressure:</span><span>");
             WebClient.print(formattedPressureSensor);
@@ -852,7 +901,7 @@ void loop() {
             WebClient.print(formattedLightSensorData);
             WebClient.print(" Lumens</span></div>");
             WebClient.print("<div class='data-item'><span class='data-label'>Humidity:</span><span>");
-            WebClient.print(formattedHumdiditySensor);
+            WebClient.print(formattedHumiditySensor);
             WebClient.print("%</span></div>");
             WebClient.print("<div class='data-item'><span class='data-label'>Pressure:</span><span>");
             WebClient.print(formattedPressureSensor);
@@ -872,7 +921,7 @@ void loop() {
             WebClient.print(formattedLightSensorData);
             WebClient.print(" Lumens</span></div>");
             WebClient.print("<div class='data-item'><span class='data-label'>Humidity:</span><span>");
-            WebClient.print(formattedHumdiditySensor);
+            WebClient.print(formattedHumiditySensor);
             WebClient.print("%</span></div>");
             WebClient.print("<div class='data-item'><span class='data-label'>Pressure:</span><span>");
             WebClient.print(formattedPressureSensor);
@@ -1088,7 +1137,7 @@ void loop() {
             sprintf(serialOutputBuffer, "%sError 404%s", Cyellow, Creset);
             Serial.println(serialOutputBuffer);
             serialOutputBuffer[0] = '\0';
-            WebClient.print("HTTP/1.1 200 OK\r\n");
+            WebClient.print("HTTP/1.1 404 Not Found\r\n");
             WebClient.print("Content-Type: text/html; charset=utf-8\r\n");
             WebClient.print("X-Content-Type-Options: nosniff\r\n");
             WebClient.print("Cache-Control: no-cache, public\r\n");
@@ -1121,6 +1170,7 @@ void loop() {
             WebClient.print("h1 { color: #999999; text-align: center; margin-bottom: 20px; font-size: 70px; }");
             WebClient.print("h2 { color: #999999; text-align: center; margin-bottom: 20px; font-size: 50px; }");
             WebClient.print("footer { background-color: #333; color: white; text-align: center; padding: 1px 0; margin-top: auto; /* Push footer to bottom */ transition-duration: 0.4s; }");
+            WebClient.print("* { user-select: none; }");
             WebClient.print("</style></head>");
             WebClient.print("<body><div class='center-container'>");
             WebClient.print("<div>");
