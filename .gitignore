@@ -1,4 +1,7 @@
 HistoricalWeatherData.csv
-Ardu4Weather/arduino_secrets.h
-IoT+Website/arduino_secrets.h
-/Ardu4WeatherNickie
+A4WLite UNO R4 RA4M1/arduino_secrets.h
+A4WLiteGHome UNO R4 RA4M1/arduino_secrets.h
+Ardu4Weather Nano ESP32/arduino_secrets.h
+Ardu4Weather UNO R3 ATmega328P/arduino_secrets.h
+Ardu4Weather UNO R4 RA4M1/arduino_secrets.h
+IoT+Website UNO R4 RA4M1/arduino_secrets.h

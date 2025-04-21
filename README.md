@@ -25,6 +25,9 @@ Components Used:
 * Photoresistor for light level detection
 * Various LEDs for visual indicators
 
+## Upcoming Updates
+Support for the Arduino Nano ESP32 and the Uno R3 are coming
+
 ## Versions
 1. Base Verion (Actively being developed)\
 This is the main version of this project, it serves you the webpage and takes in weather data.

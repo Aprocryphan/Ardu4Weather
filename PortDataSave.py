@@ -76,7 +76,7 @@ if is_admin():
     if __name__ == "__main__":
         while True:
             current_time = datetime.now()
-            if current_time.minute % 10 == 0: # Save data every 10 minutes
+            if current_time.minute % 1 == 0: # Save data every 10 minutes
                 request_data()
                 time.sleep(61)  # Wait for 1 minute to avoid multiple requests
 else:
