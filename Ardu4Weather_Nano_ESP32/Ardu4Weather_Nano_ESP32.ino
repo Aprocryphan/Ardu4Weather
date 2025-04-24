@@ -1,7 +1,7 @@
 #include "arduino_secrets.h"
-#include "A4WBitmaps.h"
-#include "Screensavers.h"
-#include "Websites.h"
+#include "a4w_bitmaps.h"
+#include "screensavers.h"
+#include "websites.h"
 #include <math.h> // For math functions like sin()
 #include <stdlib.h> // For random number generation
 #include <WiFi.h> // For WiFi connection

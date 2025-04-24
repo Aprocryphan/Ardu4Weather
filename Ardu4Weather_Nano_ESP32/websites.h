@@ -1,7 +1,7 @@
-#include <WiFiS3.h>
+#include <WiFi.h>
 #include "DHT.h" // For DHT11 sensor
 #include <Adafruit_BMP085.h> // Use Adafruit BMP085 library for BMP180
-#include "Var.h"
+#include "var.h"
 int MicLevels(); // Function declaration for microphone sensor
 
 void mainPage(

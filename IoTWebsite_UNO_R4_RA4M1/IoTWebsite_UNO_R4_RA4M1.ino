@@ -1,7 +1,7 @@
-#include "thingProperties.h"
+#include "thing_properties.h"
 #include "arduino_secrets.h"
-#include "A4WBitmaps.h"
-#include "ANSICodes.h"
+#include "a4w_bitmaps.h"
+#include "ansi_codes.h"
 #include <WDT.h> // Watchdog Timer
 #include <WiFi.h> // For WiFi connection
 #include "RTC.h" // For Real Time Clock
