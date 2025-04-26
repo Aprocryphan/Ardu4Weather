@@ -4,10 +4,12 @@
 #include "websites.h"
 #include <math.h> // For math functions like sin()
 #include <stdlib.h> // For random number generation
-#include <WiFi.h> // For WiFi connection
-#include <EEPROM.h> // Persistant value storage 1Kb max
-#include <NTPClient.h> // For NTP (Network Time Protocol) time
-#include <WiFiUdp.h> // For WiFi UDP (User Datagram Protocol) communication
+#include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
+#include <WiFi.h> // For WiFi communication
+#include <AsyncUDP.h> // For UDP network communication
+#include <NTPClient.h> // For NTP time sync
+#include <time.h>
 #include <String.h> // For string type
 #include <Wire.h> // For SCL & SDA communication
 #include <Adafruit_GFX.h> // For OLED Monitor
@@ -21,9 +23,9 @@
 #define SCREEN_HEIGHT 64 // OLED display height, in pixels
 #define OLED_RESET 4 // Reset pin # (or -1 if sharing Arduino reset pin)
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET); // Declares the OLED display
-WiFiServer WebServer(8080); // Defines the port that the web server is hosted on
+AsyncWebServer WebServer(8080); // Defines the port that the web server is hosted on
 WiFiClient WebClient; // Declare DataClient globally
-WiFiServer DataServer(8081); // Defines the port that the data server is hosted on
+AsyncWebServer DataServer(8081); // Defines the port that the data server is hosted on
 WiFiClient DataClient; // Declare DataClient globally
 WiFiUDP ntpUDP; // A UDP instance to let the NTPClient communicate over
 NTPClient timeClient(ntpUDP); // Declare NTPClient object
@@ -31,28 +33,31 @@ unsigned long unixTime; // Variable to hold unix time fetched from NTP server
 DHT dht(DHTPIN, DHTTYPE); // Create a DHT object for the indoor sensor
 DHT dht2(DHTOUTPIN, DHTTYPE); // Create a DHT object for the outdoor sensor
 Adafruit_BMP085 bmp; // Create a BMP object for the BMP180 sensor
+const char* ntpServer = "pool.ntp.org"; // NTP server
+const long gmtOffset_sec = 0;
+const int daylightOffset_sec = 3600;
 
-//const int placeholder = 0;
-//const int placeholder = 1;
-const int magneticSensor = 2;
-const int redLED = 3; //PWM
-const int piezo = 4;
-const int yellowLED = 5; //PWM
-const int greenLED = 6; //PWM
-//const int placeholder = 7;
-//const int placeholder = 8;
-const int cyanLED = 9; //PWM
-const int blueLED = 10; //PWM
-const int whiteLED = 11; //PWM
-//const int placeholder = 12;
-//const int placeholder = 13;
-
+// Left Side
 const int TempSensor = A0;
 const int microphoneSensor = A1;
-//const int Placeholder = A2;
-const int LightSensor = A3;
-//const int Placeholder = A4;
-//const int Placeholder = A5;
+const int LightSensor = A2;
+
+// Right Side
+const int whiteLED = D2; //PWM
+const int blueLED = D3; //PWM
+const int cyanLED = D4; //PWM
+const int greenLED = D5; //PWM
+const int yellowLED = D6; //PWM
+const int redLED = D7; //PWM
+const int magneticSensor = D8;
+const int piezo = D9;
+
+const int CORE_0 = 0;
+const int CORE_1 = 1;
+const int STACK_SIZE_1 = 2048;
+const int STACK_SIZE_2 = 4096;
+const int STACK_SIZE_3 = 8192;
+const int STACK_SIZE_4 = 16384;
 
 // Initialisation of variables used later
 const int sampleWindow = 50;  // Sample window width in mS (50 mS = 20Hz)
@@ -181,6 +186,8 @@ String request = "null";
 #FFFFFF
 */
 
+TaskHandle_t sensorPollingTask;
+
 void setup() {
   pinMode(magneticSensor, INPUT);
   pinMode(redLED, OUTPUT);
@@ -206,10 +213,10 @@ void setup() {
   display.drawBitmap(0, 0, epd_bitmap_CompositeLogo, 128, 64, WHITE); // Draw the logo while setup is running
   display.display();
 
+  // connect to WiFi
   NetworkChange(); // Connect to WiFi
   if (WiFi.status() != WL_CONNECTED) { // If the WiFi connection fails
-    sprintf(serialOutputBuffer, "%sFailed to connect to WiFi%s", Cred, Creset);
-    Serial.println(serialOutputBuffer);
+    Serial.println("Failed to connect to WiFi");
     serialOutputBuffer[0] = '\0';
     display.clearDisplay();
     display.setCursor(0, 16);
@@ -219,9 +226,98 @@ void setup() {
   }
   strncpy(localIP, WiFi.localIP().toString().c_str(), sizeof(localIP) - 1);
   localIP[sizeof(localIP) - 1] = '\0'; // Ensure null termination
-  sprintf(serialOutputBuffer, "%sConnected to WiFi. IP address: %s%s", Cgreen, localIP, Creset);
+  sprintf(serialOutputBuffer, "Connected to WiFi.\nIP address: %s", localIP);
   Serial.println(serialOutputBuffer);
   serialOutputBuffer[0] = '\0';
+  // initalise web server
+  WebServer.on("/", HTTP_GET, [](AsyncWebServerRequest *request){
+    Serial.println("Main Page Requested");
+    whiteLightness = map(analogRead(LightSensor), 50, 500, 10, 100);
+    analogWrite(whiteLED, whiteLightness); // Indicate that data transfer has started
+    screensaverActive = 0; // Disable screensaver
+    AsyncResponseStream *response = request->beginResponseStream("text/html");
+    mainPage(
+      bmp,
+      dht,
+      dht2,
+      Cblue,
+      Creset,
+      serialOutputBuffer,
+      seaLevelPressure,
+      LightSensor,
+      pressure,
+      formattedTime,
+      formattedC,
+      formattedF,
+      inTempDisplacement,
+      formattedOutC,
+      formattedOutF,
+      outTempDisplacement,
+      formattedLightSensorData,
+      lightDisplacement,
+      formattedHumiditySensor,
+      inHumidityDisplacement,
+      formattedOutHumiditySensor,
+      outHumidityDisplacement,
+      formattedPressureSensor,
+      pressureDisplacement,
+      altitude,
+      altitudeDisplacement,
+      formattedMicrophoneSensor,
+      noiseDisplacement,
+      formattedMagnetSensor,
+      secondsOnline,
+      hoursOnline,
+      response
+    ); // Call function, passing the stream object
+    request->send(response); // Send the streamed response
+    Serial.println("Streamed response sent");
+    analogWrite(whiteLED, LOW);
+  });
+  WebServer.on("/about", HTTP_GET, [](AsyncWebServerRequest *request){
+    Serial.println("Root page requested (Stream)");
+    AsyncResponseStream *response = request->beginResponseStream("text/html");
+    aboutPage(serialOutputBuffer, Cblue, Creset, response); // Call function, passing the stream object
+    request->send(response); // Send the streamed response
+    Serial.println("Streamed response sent");
+    analogWrite(whiteLED, LOW);
+  });
+  WebServer.on("/data", HTTP_GET, [](AsyncWebServerRequest *request){
+    Serial.println("Root page requested (Stream)");
+    AsyncResponseStream *response = request->beginResponseStream("text/html");
+    dataPage(serialOutputBuffer, Cblue, Creset, response); // Call function, passing the stream object
+    request->send(response); // Send the streamed response
+    Serial.println("Streamed response sent");
+    analogWrite(whiteLED, LOW);
+  });
+  WebServer.on("/aprocryphan", HTTP_GET, [](AsyncWebServerRequest *request){
+    Serial.println("Root page requested (Stream)");
+    AsyncResponseStream *response = request->beginResponseStream("text/html");
+    aprocryphanPage(serialOutputBuffer, Cblue, Creset, response); // Call function, passing the stream object
+    request->send(response); // Send the streamed response
+    Serial.println("Streamed response sent");
+    analogWrite(whiteLED, LOW);
+  });
+  WebServer.on("/web1", HTTP_GET, [](AsyncWebServerRequest *request){
+    Serial.println("Root page requested (Stream)");
+    AsyncResponseStream *response = request->beginResponseStream("text/html");
+    web1Page(response); // Call function, passing the stream object
+    request->send(response); // Send the streamed response
+    Serial.println("Streamed response sent");
+    analogWrite(whiteLED, LOW);
+  });
+  WebServer.onNotFound([](AsyncWebServerRequest *request){
+    Serial.print("NOT_FOUND: ");
+    if(request->method() == HTTP_GET) Serial.print("GET");
+    else if(request->method() == HTTP_POST) Serial.print("POST");
+    Serial.print(" ");
+    Serial.println(request->url());
+    AsyncResponseStream *response = request->beginResponseStream("text/html");
+    response->setCode(404); // Set the HTTP status code to 404
+    errPage(serialOutputBuffer, Cyellow, Creset, response); // Call your function to print the HTML to the stream
+    request->send(response); // Send the streamed response
+    analogWrite(whiteLED, LOW);
+  });
   WebServer.begin(); // Start website hosting server, port 8080
   DataServer.begin(); // Start data sending server, port 8081
 
@@ -240,45 +336,8 @@ void setup() {
   }
 
   // initialize RTC
-  RTC.begin();
-  if (!RTC.begin()) {
-    sprintf(serialOutputBuffer, "%sFailed to initialize RTC%s", Cred, Creset);
-    Serial.println(serialOutputBuffer);
-    display.clearDisplay();
-    display.setCursor(0, 16);
-    display.setTextSize(1);
-    display.print("Failed to initialize RTC");
-    display.display();
-    for (;;); // Don't proceed, loop forever
-  }
-  timeClient.begin();
-  timeClient.update();
-  unixTime = timeClient.getEpochTime();
-  while (unixTime < 1000)
-  { // If the unix time is less than 1000, it's not a valid time
-    timeClient.update();
-    unixTime = timeClient.getEpochTime();
-    sprintf(serialOutputBuffer, "%sFailed to get proper unix time, refreshing.%s", Cred, Creset);
-    Serial.println(serialOutputBuffer);
-    serialOutputBuffer[0] = '\0';
-    display.clearDisplay();
-    display.setCursor(0, 16);
-    display.setTextSize(1);
-    display.print("Failed to get proper unix time, refreshing.");
-    display.display();
-    delay(200);
-  }
-  sprintf(serialOutputBuffer, "%sUnix Time: %lu%s", Cblue, unixTime, Creset);
-  Serial.println(serialOutputBuffer);
-  serialOutputBuffer[0] = '\0';
-  RTCTime timeToSet = RTCTime(unixTime);
-  RTC.setTime(timeToSet);
-  RTCTime currentTime;
-  RTC.getTime(currentTime);
-  String currentTimeS = String(currentTime);
-  sprintf(serialOutputBuffer, "%sRTC Time: %s%s", Cblue, currentTimeS, Creset);
-  Serial.println(serialOutputBuffer);
-  serialOutputBuffer[0] = '\0';
+  configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
+  printLocalTime();
 
   // initialize BMP sensor
   if (!bmp.begin()) { // If the BMP sensor fails to initialize
@@ -292,6 +351,25 @@ void setup() {
     for (;;); // Don't proceed, loop forever
   }
 
+  // Reset reason
+  disableLoopWDT();
+  esp_reset_reason_t reason = esp_reset_reason();
+  Serial.print("Reset reason: ");
+  switch (reason) {
+    case ESP_RST_UNKNOWN:    Serial.println("Unknown"); break;
+    case ESP_RST_POWERON:    Serial.println("Power on"); break;
+    case ESP_RST_EXT:        Serial.println("External reset"); break;
+    case ESP_RST_SW:         Serial.println("Software reset"); break;
+    case ESP_RST_PANIC:      Serial.println("Panic/exception"); break;
+    case ESP_RST_INT_WDT:    Serial.println("Interrupt watchdog"); break; // IWDT
+    case ESP_RST_TASK_WDT:   Serial.println("Task watchdog"); break;     // TWDT
+    case ESP_RST_WDT:        Serial.println("Other watchdog"); break;
+    case ESP_RST_DEEPSLEEP:  Serial.println("Deep sleep wakeup"); break;
+    case ESP_RST_BROWNOUT:   Serial.println("Brownout"); break;          // Power issue!
+    case ESP_RST_SDIO:       Serial.println("SDIO"); break;
+    default:                 Serial.println("Other"); break;
+  }
+
   //RandomStaticLoad(); // Load a random static image onto the LED Matrix
   sprintf(serialOutputBuffer, "%sSetup Complete%s", Cgreen, Creset);
   Serial.println(serialOutputBuffer);
@@ -300,8 +378,9 @@ void setup() {
   // for screensavers
   randomSeed(analogRead(0));
   lastEffectChangeTime = millis();
-
   display.clearDisplay();
+
+  xTaskCreatePinnedToCore(sensorPoll, "Sensor Polling Task", STACK_SIZE_2, NULL, 2, &sensorPollingTask, CORE_1);
 }
 
 // NetworkChange, If the network disconnects, it reconnects to another predefined network
@@ -347,58 +426,6 @@ void NetworkChange() {
   }
 }
 
-// RandomStaticLoad, Loads a random predefined image onto the Arduino R4 WiFi led matrix
-//const int StaticAnimationSelection = random(0,12);
-const int StaticAnimationSelection = 3; // For testing
-void RandomStaticLoad() {
-  switch (StaticAnimationSelection) {
-    case 0:
-      matrix.loadFrame(LEDMATRIX_UNO);
-      break;
-    case 1:
-      matrix.loadFrame(LEDMATRIX_BLUETOOTH);
-      break;
-    case 2:
-      matrix.loadFrame(LEDMATRIX_BOOTLOADER_ON);
-      break;
-    case 3:
-      matrix.loadFrame(LEDMATRIX_CLOUD_WIFI);
-      break;
-    case 4:
-      matrix.loadFrame(LEDMATRIX_DANGER);
-      break;
-    case 5:
-      matrix.loadFrame(LEDMATRIX_EMOJI_BASIC);
-      break;
-    case 6:
-      matrix.loadFrame(LEDMATRIX_EMOJI_HAPPY);
-      break;
-    case 7:
-      matrix.loadFrame(LEDMATRIX_EMOJI_SAD);
-      break;
-    case 8:
-      matrix.loadFrame(LEDMATRIX_HEART_BIG);
-      break;
-    case 9:
-      matrix.loadFrame(LEDMATRIX_LIKE);
-      break;
-    case 10:
-      matrix.loadFrame(LEDMATRIX_MUSIC_NOTE);
-      break;
-    case 11:
-      matrix.loadFrame(LEDMATRIX_RESISTOR);
-      break;
-  }
-}
-
-// ReadTempC, Redundant, reds temp from an analog sensor
-float ReadTempC() {
-  int SensorValue = analogRead(TempSensor);
-  float Voltage = SensorValue * (5.0 / 1023.0); // Assuming 5V reference
-  float Temp = (Voltage - 0.5) * 100.0 * gain + offset;
-  return Temp;
-}
-
 // calculateAverage, A modular function that calculates the average from a number of samples
 template <typename T>
 T calculateAverage(T value, unsigned long interval, unsigned long &lastUpdateTime, T &sum, int &count, int &samples) { 
@@ -414,6 +441,15 @@ T calculateAverage(T value, unsigned long interval, unsigned long &lastUpdateTim
     }
   }
   return sum / (count > 0 ? count : 1); // Avoid division by zero
+}
+
+void printLocalTime() {
+  struct tm timeinfo;
+  if (!getLocalTime(&timeinfo)) {
+    Serial.println("Failed to obtain time");
+    return;
+  }
+  Serial.println(&timeinfo, "%B %d %Y %H:%M:%S");
 }
 
 // LiveThermomiterNew, Doesn't work currently
@@ -478,32 +514,6 @@ void LiveThermomiter() {
     analogWrite(blueLED, PWMLightness);
   }
 } 
-
-// NTPSync, Syncs the RTC module with the time fetched from the NTP server every 5 mins, helps account for RTC module drift.
-void NTPSync() {
-  if (millis() - previousMillis >= 300000) {
-    previousMillis = millis();
-    if (timeClient.update()) { // If the NTP update is successful
-      whiteLightness = map(analogRead(LightSensor), 50, 500, 10, 100);
-      analogWrite(whiteLED, whiteLightness);
-      unixTime = timeClient.getEpochTime();
-      sprintf(serialOutputBuffer, "%sUnix Time: %s", Cblue, Creset);
-      Serial.println(serialOutputBuffer);
-      serialOutputBuffer[0] = '\0';
-      Serial.println(unixTime);
-      sprintf(serialOutputBuffer, "%sNTP Time Synced%s", Cgreen, Creset);
-      Serial.println(serialOutputBuffer);
-      serialOutputBuffer[0] = '\0';
-      RTCTime timeToSet = RTCTime(unixTime);
-      RTC.setTime(timeToSet);
-    } else {
-      sprintf(serialOutputBuffer, "%sNTP Update Failed%s", Cred, Creset);
-      Serial.println(serialOutputBuffer);
-      serialOutputBuffer[0] = '\0';
-    }
-  }
-  analogWrite(whiteLED, LOW);
-}
 
 float DeltaPressure24() {
   if (millis() - DPPreviousMillis >= 500000) {
@@ -665,29 +675,8 @@ int MicLevels() {
   return peakToPeak;
 }
 
-int DebugMillis = 0;
-void loop() {
-  //DebugMillis = millis(); // Reset the debug timer
-  // Put continuous updates here
-  LiveThermomiter();
-  NetworkChange();
-  NTPSync();
-  //DeltaPressure24();
-  //float DP24 = DeltaPressure24();
-
-  // Time and Date Data
-  RTCTime currentTime;
-  RTC.getTime(currentTime);
-  stringTime = String(currentTime);
-  tPosition = stringTime.indexOf('T');
-  sprintf(timeOnly, "%s", stringTime.substring(tPosition + 1).c_str());
-  sprintf(dateOnly, "%s", stringTime.substring(0, tPosition).c_str());
-  secondsOnline = millis() / 1000;
-  sprintf(hoursOnline, "%.2f", (millis() / 3600000.0));
-  sprintf(daysOnline, "%.2f", (millis() / 86400000.0));
-
-  // Sensor Data
-  if (millis() - SensorPreviousMillis >= 5000) {
+void sensorPoll(void *pvParameters) {
+  while (true) {
     SensorPreviousMillis = millis();
     sprintf(formattedTime, "%s / %s", dateOnly, timeOnly);
     formattedC = dht.readTemperature();
@@ -703,38 +692,60 @@ void loop() {
     formattedMagnetSensor = (digitalRead(magneticSensor) == 1 ? 0 : 1);
     altitude = bmp.readAltitude(seaLevelPressure);
     signalStrength = WiFi.RSSI();
+    vTaskDelay(pdMS_TO_TICKS(5000));
+    taskYIELD(); // Yield to other tasks
   }
+}
 
-  // OLED Data Display Function and Screensavers
-  if (millis() - screensaverMillis >= 300000) {
-    screensaverMillis = millis();
-    screensaverActive = (screensaverActive == 1) ? 0 : ((random(0, 4) == 1) ? 1 : screensaverActive);
-  }
-  if (screensaverActive == 0) {
-    if (millis() - OLEDPreviousMillis >= 5000) {
-      OLEDPreviousMillis = millis();
-      OLEDPanel = (OLEDPanel + 1) % 3;
+void oledFunctions() {
+  while (true) {
+    if (millis() - screensaverMillis >= 300000) {
+      screensaverMillis = millis();
+      screensaverActive = (screensaverActive == 1) ? 0 : ((random(0, 4) == 1) ? 1 : screensaverActive);
     }
-    display.clearDisplay();
-    OLEDHeader(dateOnly, timeOnly);
-    switch (OLEDPanel) {
-      case 0:
-        OLEDPanel1(formattedC, formattedLightSensorData, formattedHumiditySensor, formattedPressureSensor, formattedMicrophoneSensor, hoursOnline);
-        break;
-      case 1:
-        OLEDPanel2(formattedOutC, formattedOutHumiditySensor, formattedMagnetSensor, altitude, daysOnline);
-        break;
-      case 2:
-        OLEDPanel3(localIP, subnetMask, gatewayIP, NTPIP, signalStrength, previousMillis, DP24);
-        break;
+    if (screensaverActive == 0) {
+      if (millis() - OLEDPreviousMillis >= 5000) {
+        OLEDPreviousMillis = millis();
+        OLEDPanel = (OLEDPanel + 1) % 3;
+      }
+      display.clearDisplay();
+      OLEDHeader(dateOnly, timeOnly);
+      switch (OLEDPanel) {
+        case 0:
+          OLEDPanel1(formattedC, formattedLightSensorData, formattedHumiditySensor, formattedPressureSensor, formattedMicrophoneSensor, hoursOnline);
+          break;
+        case 1:
+          OLEDPanel2(formattedOutC, formattedOutHumiditySensor, formattedMagnetSensor, altitude, daysOnline);
+          break;
+        case 2:
+          OLEDPanel3(localIP, subnetMask, gatewayIP, NTPIP, signalStrength, previousMillis, DP24);
+          break;
+      }
+      display.display(); // Display everything held in buffer
+    } else {
+      screensavers();
+      display.display();
     }
-    display.display(); // Display everything held in buffer
-  } else {
-    screensavers();
-    display.display();
+    vTaskDelay(pdMS_TO_TICKS(0));
+    taskYIELD(); // Yield to other tasks
   }
+}
 
-  // CSV Server Data Function, When a connection is made, data is sent. a partner python script saves the data to a CSV file.
+int DebugMillis = 0;
+void loop() {
+  //DebugMillis = millis(); // Reset the debug timer
+  // Put continuous updates here
+  LiveThermomiter();
+  NetworkChange();
+  //DeltaPressure24();
+  //float DP24 = DeltaPressure24();
+
+  // Time and Date Data
+  secondsOnline = millis() / 1000;
+  sprintf(hoursOnline, "%.2f", (millis() / 3600000.0));
+  sprintf(daysOnline, "%.2f", (millis() / 86400000.0));
+
+  /* CSV Server Data Function, When a connection is made, data is sent. a partner python script saves the data to a CSV file.
   WiFiClient DataClient = DataServer.available(); // Check for incoming connections
   if (DataClient) { // If a client connects
     sprintf(serialOutputBuffer, "%sNew Data Client.%s", Cblue, Creset);
@@ -759,96 +770,7 @@ void loop() {
     sprintf(serialOutputBuffer, "%sData Client Disconnected.%s", Cyellow, Creset);
     Serial.println(serialOutputBuffer);
     serialOutputBuffer[0] = '\0';
-  }
-  
-  // Website Function
-  WiFiClient WebClient = WebServer.available(); // Check for incoming connections
-  if (WebClient) { // If a client connects
-    sprintf(serialOutputBuffer, "%sNew Web Client.%s", Cblue, Creset);
-    Serial.println(serialOutputBuffer);
-    serialOutputBuffer[0] = '\0';
-    while (WebClient.connected()) { // Keep connection open until client disconnects
-      if (WebClient.available()) {
-        whiteLightness = map(analogRead(LightSensor), 50, 500, 10, 100);
-        analogWrite(whiteLED, whiteLightness); // Indicate that data transfer has started
-        screensaverActive = 0; // Disable screensaver
-        char c = WebClient.read(); // Read and save incoming data, initial connection including subpage request
-        referrer += c;
-        if (c == '\n') { // Check for end of line
-          int firstSpace = referrer.indexOf(' ');
-          int secondSpace = referrer.indexOf(' ', firstSpace + 1);
-          url = referrer.substring(firstSpace + 1, secondSpace);
-          url.trim(); // Isolated subpage request
-          String request = "";
-          while (WebClient.available()) {
-            char c = WebClient.read();
-            request += c;
-          }
-          sprintf(serialOutputBuffer, "%sURL :%s%s", Cblue, url, Creset);
-          Serial.println(serialOutputBuffer);
-          serialOutputBuffer[0] = '\0';
-          if (url == "/") {
-            mainPage(
-              WebClient,
-              bmp,
-              dht,
-              dht2,
-              Cblue,
-              Creset,
-              serialOutputBuffer,
-              seaLevelPressure,
-              LightSensor,
-              pressure,
-              formattedTime,
-              formattedC,
-              formattedF,
-              inTempDisplacement,
-              formattedOutC,
-              formattedOutF,
-              outTempDisplacement,
-              formattedLightSensorData,
-              lightDisplacement,
-              formattedHumiditySensor,
-              inHumidityDisplacement,
-              formattedOutHumiditySensor,
-              outHumidityDisplacement,
-              formattedPressureSensor,
-              pressureDisplacement,
-              altitude,
-              altitudeDisplacement,
-              formattedMicrophoneSensor,
-              noiseDisplacement,
-              formattedMagnetSensor,
-              secondsOnline,
-              hoursOnline
-            );
-            break;
-          } else if (url == "/about") {
-            aboutPage(serialOutputBuffer, WebClient, Cblue, Creset);
-            break;
-          } else if (url == "/data") {
-            dataPage(serialOutputBuffer, WebClient, Cblue, Creset);
-            break;
-          } else if (url == "/aprocryphan") {
-            aprocryphanPage(serialOutputBuffer, WebClient, Cblue, Creset);
-            break;
-          } else if (url == "/web1") {
-            web1Page(WebClient);
-            break;
-          } else { // Serve error 404 page
-            errPage(serialOutputBuffer, WebClient, Cyellow, Creset);
-            break;
-          }
-        }
-      }
-    }
-    WebClient.stop(); // Disconnect the client because all data has been sent
-    sprintf(serialOutputBuffer, "%sWeb Client disconnected.%s", Cyellow, Creset);
-    Serial.println(serialOutputBuffer);
-    serialOutputBuffer[0] = '\0';
-    analogWrite(whiteLED, LOW);
-    url = ""; // Empty out for next connection request
-    referrer = ""; // Empty out for next connection request
-  }
-  //Serial.println(millis() - DebugMillis); // Debugging
+  }*/
+  vTaskDelay(pdMS_TO_TICKS(1000));
+  taskYIELD(); // Yield to other tasks
 }
