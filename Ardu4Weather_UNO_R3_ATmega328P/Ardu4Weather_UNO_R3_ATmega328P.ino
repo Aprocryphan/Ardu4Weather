@@ -1,22 +1,13 @@
 #include "arduino_secrets.h"
 #include "a4w_bitmaps.h"
 #include "screensavers.h"
-#include "websites.h"
 #include <math.h> // For math functions like sin()
 #include <stdlib.h> // For random number generation
-#include <WiFiS3.h> // For WiFi connection
-#include "RTC.h" // For Real Time Clock
 #include <EEPROM.h> // Persistant value storage 1Kb max
-#include <NTPClient.h> // For NTP (Network Time Protocol) time
-#include <WiFiUdp.h> // For WiFi UDP (User Datagram Protocol) communication
-#include <String.h> // For string type
-#include <Wire.h> // For SCL & SDA communication
 #include <Adafruit_GFX.h> // For OLED Monitor
 #include <Adafruit_SSD1306.h> // For OLED Monitor
 #include "DHT.h" // For DHT11 sensor
 #include <Adafruit_BMP085.h> // Use Adafruit BMP085 library for BMP180
-#include "ArduinoGraphics.h" // For LED Matrix
-#include "Arduino_LED_Matrix.h" // For LED Matrix
 #define DHTPIN 7 // Digital pin connected to the indoor DHT sensor
 #define DHTOUTPIN 8 // Digital pin connected to the outdoor DHT sensor
 #define DHTTYPE DHT11 // The type of DHT sensor
@@ -24,18 +15,9 @@
 #define SCREEN_HEIGHT 64 // OLED display height, in pixels
 #define OLED_RESET 4 // Reset pin # (or -1 if sharing Arduino reset pin)
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET); // Declares the OLED display
-WiFiServer WebServer(8080); // Defines the port that the web server is hosted on
-WiFiClient WebClient; // Declare DataClient globally
-WiFiServer DataServer(8081); // Defines the port that the data server is hosted on
-WiFiClient DataClient; // Declare DataClient globally
-WiFiUDP ntpUDP; // A UDP instance to let the NTPClient communicate over
-NTPClient timeClient(ntpUDP); // Declare NTPClient object
-unsigned long unixTime; // Variable to hold unix time fetched from NTP server
 DHT dht(DHTPIN, DHTTYPE); // Create a DHT object for the indoor sensor
 DHT dht2(DHTOUTPIN, DHTTYPE); // Create a DHT object for the outdoor sensor
 Adafruit_BMP085 bmp; // Create a BMP object for the BMP180 sensor
-ArduinoLEDMatrix matrix; // Create a matrix object for the LED Matrix
-
 //const int placeholder = 0;
 //const int placeholder = 1;
 const int magneticSensor = 2;
@@ -66,13 +48,11 @@ unsigned int signalMin = 1024;
 unsigned int sample; // Sample value from the pressure sensor
 unsigned int peakToPeak = 0;   // peak-to-peak level
 int screensaverActive = 0;
-int network = -1; // Initial network connection attempt for switch case
 int OLEDPanel = 0; // Initial OLED Panel
 int readingIndex = 0; // Keep track of the current position in the array
 int SensorPreviousMillis = 0;
 int formattedLightSensorData = 0;
 int formattedMicrophoneSensor = 0;
-int signalStrength = 0;
 int formattedMagnetSensor = 0;
 int inTempDisplacement = 0;
 int outTempDisplacement = 0;
@@ -153,24 +133,12 @@ const char Creset[13] = "\033[0m";
 const char Cgrey_old[13] = "\x1b[90m";
 const char* weatherEmojis[] = { "⚡", "☔", "☁️", "🌨️", "🌧️", "🌩️", "⛈️", "🌦️", "🌥️", "⛅", "🌤️", "🌡️", "🔥", "❄️", "🌫️", "🌙", "☀️" };
 char serialOutputBuffer [256]; // Buffer for serial output
-char formattedTime[23] = "null"; // XX-XX-XX / XX:XX:XX\0
-char dateOnly[11] = "null"; // XX-XX-XX\0
-char timeOnly[9] = "null"; // XX:XX:XX\0
 char hoursOnline[10] = "null"; // XX.XX\0
 char daysOnline[10] = "null"; // XX.XX\0
-char localIP[21] = "null"; // XXX.XXX.XXX.XXX\0
-char subnetMask[21] = "null"; // XXX.XXX.XXX.XXX\0
-char gatewayIP[21] = "null"; // XXX.XXX.XXX.XXX\0
-char NTPIP[21] = "null"; // XXX.XXX.XXX.XXX\0
-char data[128] = "null"; // <START>XX-XX-XX,XX:XX:XX,XX.X,XX.X,XXX,XX.X,XX.X,XX.X,XXX,XXXXX<END>\0
-//char url[128] = ""; // XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX\0
-//char referrer[128] = ""; // XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX\0
-//char request[2048] = ""; // XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX\0
+char dateOnly[11] = "null"; // XX-XX-XX\0
+char timeOnly[9] = "null"; // XX:XX:XX\0
+char formattedTime[23] = "null"; // XX-XX-XX / XX:XX:XX\0
 
-String stringTime = "null";
-String url = "null";
-String referrer = "null";
-String request = "null";
 
 /* Colour Palette
 #333333
@@ -194,7 +162,6 @@ void setup() {
   pinMode(blueLED, OUTPUT);
   pinMode(whiteLED, OUTPUT);
   Serial.begin(57600);
-  Serial1.begin(57600);
   Serial.println("\n*************** Ardu4Weather v0.26.0 - Commit 23 *******************");
 
   // Initialize the OLED display
@@ -210,25 +177,6 @@ void setup() {
   display.drawBitmap(0, 0, epd_bitmap_CompositeLogo, 128, 64, WHITE); // Draw the logo while setup is running
   display.display();
 
-  NetworkChange(); // Connect to WiFi
-  if (WiFi.status() != WL_CONNECTED) { // If the WiFi connection fails
-    sprintf(serialOutputBuffer, "%sFailed to connect to WiFi%s", Cred, Creset);
-    Serial.println(serialOutputBuffer);
-    serialOutputBuffer[0] = '\0';
-    display.clearDisplay();
-    display.setCursor(0, 16);
-    display.setTextSize(1);
-    display.print("Failed to connect to WiFi");
-    display.display();
-  }
-  strncpy(localIP, WiFi.localIP().toString().c_str(), sizeof(localIP) - 1);
-  localIP[sizeof(localIP) - 1] = '\0'; // Ensure null termination
-  sprintf(serialOutputBuffer, "%sConnected to WiFi. IP address: %s%s", Cgreen, localIP, Creset);
-  Serial.println(serialOutputBuffer);
-  serialOutputBuffer[0] = '\0';
-  WebServer.begin(); // Start website hosting server, port 8080
-  DataServer.begin(); // Start data sending server, port 8081
-
   // initialize DHT sensors
   dht.begin();
   dht2.begin();
@@ -243,50 +191,6 @@ void setup() {
     display.display();
   }
 
-  // initialize RTC
-  RTC.begin();
-  if (!RTC.begin()) {
-    sprintf(serialOutputBuffer, "%sFailed to initialize RTC%s", Cred, Creset);
-    Serial.println(serialOutputBuffer);
-    display.clearDisplay();
-    display.setCursor(0, 16);
-    display.setTextSize(1);
-    display.print("Failed to initialize RTC");
-    display.display();
-    for (;;); // Don't proceed, loop forever
-  }
-  timeClient.begin();
-  timeClient.update();
-  unixTime = timeClient.getEpochTime();
-  while (unixTime < 1000)
-  { // If the unix time is less than 1000, it's not a valid time
-    timeClient.update();
-    unixTime = timeClient.getEpochTime();
-    sprintf(serialOutputBuffer, "%sFailed to get proper unix time, refreshing.%s", Cred, Creset);
-    Serial.println(serialOutputBuffer);
-    serialOutputBuffer[0] = '\0';
-    display.clearDisplay();
-    display.setCursor(0, 16);
-    display.setTextSize(1);
-    display.print("Failed to get proper unix time, refreshing.");
-    display.display();
-    delay(200);
-  }
-  sprintf(serialOutputBuffer, "%sUnix Time: %lu%s", Cblue, unixTime, Creset);
-  Serial.println(serialOutputBuffer);
-  serialOutputBuffer[0] = '\0';
-  RTCTime timeToSet = RTCTime(unixTime);
-  RTC.setTime(timeToSet);
-  RTCTime currentTime;
-  RTC.getTime(currentTime);
-  String currentTimeS = String(currentTime);
-  sprintf(serialOutputBuffer, "%sRTC Time: %s%s", Cblue, currentTimeS, Creset);
-  Serial.println(serialOutputBuffer);
-  serialOutputBuffer[0] = '\0';
-
-  // initialize LED Matrix
-  matrix.begin();
-
   // initialize BMP sensor
   if (!bmp.begin()) { // If the BMP sensor fails to initialize
     sprintf(serialOutputBuffer, "%sCould not find a valid BMP085/BMP180 sensor, check wiring!%s", Cred, Creset);
@@ -299,7 +203,6 @@ void setup() {
     for (;;); // Don't proceed, loop forever
   }
 
-  //RandomStaticLoad(); // Load a random static image onto the LED Matrix
   sprintf(serialOutputBuffer, "%sSetup Complete%s", Cgreen, Creset);
   Serial.println(serialOutputBuffer);
   serialOutputBuffer[0] = '\0'; // Clear the serial output buffer by setting the first character to null
@@ -309,93 +212,6 @@ void setup() {
   lastEffectChangeTime = millis();
 
   display.clearDisplay();
-}
-
-// NetworkChange, If the network disconnects, it reconnects to another predefined network
-void NetworkChange() {
-  while (WiFi.status() != WL_CONNECTED) {
-    network = (network + 1) % 3;
-    switch(network) {
-      case 0:
-        WiFi.begin(SECRET_SSID, SECRET_OPTIONAL_PASS);
-        sprintf(serialOutputBuffer, "%sConnected To Network 1.%s", Cblue, Creset);
-        Serial.println(serialOutputBuffer);
-        serialOutputBuffer[0] = '\0';
-        display.setTextSize(2);
-        display.setCursor(0, 30);
-        display.write(0xAE);
-        display.display();
-        strncpy(localIP, WiFi.localIP().toString().c_str(), sizeof(localIP) - 1);
-        localIP[sizeof(localIP) - 1] = '\0'; // Ensure null termination
-        strncpy(subnetMask, WiFi.subnetMask().toString().c_str(), sizeof(subnetMask) - 1);
-        subnetMask[sizeof(subnetMask) - 1] = '\0'; // Ensure null termination
-        strncpy(gatewayIP, WiFi.gatewayIP().toString().c_str(), sizeof(gatewayIP) - 1);
-        gatewayIP[sizeof(gatewayIP) - 1] = '\0'; // Ensure null termination
-        delay(100);
-        break;
-      case 1:
-        WiFi.begin(SECRET_SSID_2, SECRET_OPTIONAL_PASS_2);
-        sprintf(serialOutputBuffer, "%sConnected To Network 2.%s", Cblue, Creset);
-        Serial.println(serialOutputBuffer);
-        serialOutputBuffer[0] = '\0';
-        display.setTextSize(2);
-        display.setCursor(0, 30);
-        display.write(0xAF);
-        display.display();
-        strncpy(localIP, WiFi.localIP().toString().c_str(), sizeof(localIP) - 1);
-        localIP[sizeof(localIP) - 1] = '\0'; // Ensure null termination
-        strncpy(subnetMask, WiFi.subnetMask().toString().c_str(), sizeof(subnetMask) - 1);
-        subnetMask[sizeof(subnetMask) - 1] = '\0'; // Ensure null termination
-        strncpy(gatewayIP, WiFi.gatewayIP().toString().c_str(), sizeof(gatewayIP) - 1);
-        gatewayIP[sizeof(gatewayIP) - 1] = '\0'; // Ensure null termination
-        delay(100);
-        break;
-    }
-  }
-}
-
-// RandomStaticLoad, Loads a random predefined image onto the Arduino R4 WiFi led matrix
-//const int StaticAnimationSelection = random(0,12);
-const int StaticAnimationSelection = 3; // For testing
-void RandomStaticLoad() {
-  switch (StaticAnimationSelection) {
-    case 0:
-      matrix.loadFrame(LEDMATRIX_UNO);
-      break;
-    case 1:
-      matrix.loadFrame(LEDMATRIX_BLUETOOTH);
-      break;
-    case 2:
-      matrix.loadFrame(LEDMATRIX_BOOTLOADER_ON);
-      break;
-    case 3:
-      matrix.loadFrame(LEDMATRIX_CLOUD_WIFI);
-      break;
-    case 4:
-      matrix.loadFrame(LEDMATRIX_DANGER);
-      break;
-    case 5:
-      matrix.loadFrame(LEDMATRIX_EMOJI_BASIC);
-      break;
-    case 6:
-      matrix.loadFrame(LEDMATRIX_EMOJI_HAPPY);
-      break;
-    case 7:
-      matrix.loadFrame(LEDMATRIX_EMOJI_SAD);
-      break;
-    case 8:
-      matrix.loadFrame(LEDMATRIX_HEART_BIG);
-      break;
-    case 9:
-      matrix.loadFrame(LEDMATRIX_LIKE);
-      break;
-    case 10:
-      matrix.loadFrame(LEDMATRIX_MUSIC_NOTE);
-      break;
-    case 11:
-      matrix.loadFrame(LEDMATRIX_RESISTOR);
-      break;
-  }
 }
 
 // ReadTempC, Redundant, reds temp from an analog sensor
@@ -486,32 +302,6 @@ void LiveThermomiter() {
   }
 } 
 
-// NTPSync, Syncs the RTC module with the time fetched from the NTP server every 5 mins, helps account for RTC module drift.
-void NTPSync() {
-  if (millis() - previousMillis >= 300000) {
-    previousMillis = millis();
-    if (timeClient.update()) { // If the NTP update is successful
-      whiteLightness = map(analogRead(LightSensor), 50, 500, 10, 100);
-      analogWrite(whiteLED, whiteLightness);
-      unixTime = timeClient.getEpochTime();
-      sprintf(serialOutputBuffer, "%sUnix Time: %s", Cblue, Creset);
-      Serial.println(serialOutputBuffer);
-      serialOutputBuffer[0] = '\0';
-      Serial.println(unixTime);
-      sprintf(serialOutputBuffer, "%sNTP Time Synced%s", Cgreen, Creset);
-      Serial.println(serialOutputBuffer);
-      serialOutputBuffer[0] = '\0';
-      RTCTime timeToSet = RTCTime(unixTime);
-      RTC.setTime(timeToSet);
-    } else {
-      sprintf(serialOutputBuffer, "%sNTP Update Failed%s", Cred, Creset);
-      Serial.println(serialOutputBuffer);
-      serialOutputBuffer[0] = '\0';
-    }
-  }
-  analogWrite(whiteLED, LOW);
-}
-
 float DeltaPressure24() {
   if (millis() - DPPreviousMillis >= 500000) {
     DPPreviousMillis = millis(); // Fixing to use the current millis() for accurate timing
@@ -590,27 +380,10 @@ void OLEDPanel2(float formattedOutC, float formattedOutHumiditySensor, int forma
 }
 
 // OLEDPanel3, Shows a few different network statistics, useful for debugging
-void OLEDPanel3(String localIP, String subnetMask, String gatewayIP, String NTPIP, int signalStrength, unsigned long previousMillis, float DP24) {
+void OLEDPanel3() {
   display.setTextSize(1);
   display.setCursor(110, 16);
   display.print("3/3");
-  display.setCursor(0, 16);
-  display.println("IP: " + localIP);
-  display.setCursor(0, 24);
-  display.println("SM: " + subnetMask);
-  display.setCursor(0, 32);
-  display.println("GIP: " + gatewayIP);
-  display.setCursor(0, 40);
-  display.println("NTPIP: " + NTPIP);
-  display.setCursor(0, 48);
-  sprintf(serialOutputBuffer, "Signal: %ddBm", signalStrength);
-  display.println(serialOutputBuffer);
-  display.setCursor(0, 56);
-  sprintf(serialOutputBuffer, "NTP UP: %lu", 0);
-  display.println(serialOutputBuffer);
-  display.setCursor(0, 64);
-  sprintf(serialOutputBuffer, "DP: %.2f", DP24);
-  display.println(serialOutputBuffer);
 }
 
 void screensavers() {
@@ -677,18 +450,10 @@ void loop() {
   //DebugMillis = millis(); // Reset the debug timer
   // Put continuous updates here
   LiveThermomiter();
-  NetworkChange();
-  NTPSync();
   //DeltaPressure24();
   //float DP24 = DeltaPressure24();
 
-  // Time and Date Data
-  RTCTime currentTime;
-  RTC.getTime(currentTime);
-  stringTime = String(currentTime);
-  tPosition = stringTime.indexOf('T');
-  sprintf(timeOnly, "%s", stringTime.substring(tPosition + 1).c_str());
-  sprintf(dateOnly, "%s", stringTime.substring(0, tPosition).c_str());
+  // Time Data
   secondsOnline = millis() / 1000;
   sprintf(hoursOnline, "%.2f", (millis() / 3600000.0));
   sprintf(daysOnline, "%.2f", (millis() / 86400000.0));
@@ -709,7 +474,6 @@ void loop() {
     formattedMicrophoneSensor = MicLevels();
     formattedMagnetSensor = (digitalRead(magneticSensor) == 1 ? 0 : 1);
     altitude = bmp.readAltitude(seaLevelPressure);
-    signalStrength = WiFi.RSSI();
   }
 
   // OLED Data Display Function and Screensavers
@@ -732,130 +496,13 @@ void loop() {
         OLEDPanel2(formattedOutC, formattedOutHumiditySensor, formattedMagnetSensor, altitude, daysOnline);
         break;
       case 2:
-        OLEDPanel3(localIP, subnetMask, gatewayIP, NTPIP, signalStrength, previousMillis, DP24);
+        OLEDPanel3();
         break;
     }
     display.display(); // Display everything held in buffer
   } else {
     screensavers();
     display.display();
-  }
-
-  // CSV Server Data Function, When a connection is made, data is sent. a partner python script saves the data to a CSV file.
-  WiFiClient DataClient = DataServer.available(); // Check for incoming connections
-  if (DataClient) { // If a client connects
-    sprintf(serialOutputBuffer, "%sNew Data Client.%s", Cblue, Creset);
-    Serial.println(serialOutputBuffer);
-    serialOutputBuffer[0] = '\0';
-    while (DataClient.connected()) {
-      if (DataClient.available()) {
-        String request = DataClient.readStringUntil('\n');
-        sprintf(serialOutputBuffer, "%sRequest received: %s%s", Cblue, request, Creset);
-        Serial.println(serialOutputBuffer);
-        serialOutputBuffer[0] = '\0';
-        if (request == "REQUEST_DATA") {
-          sprintf(data, "<START>%s,%s,%.1f,%.1f,%d,%.1f,%.2f,%.2f,%d,%lu<END>", dateOnly, timeOnly, formattedC, formattedOutC, formattedLightSensorData, formattedHumiditySensor, formattedOutHumiditySensor, formattedPressureSensor, formattedMicrophoneSensor, secondsOnline);
-          DataClient.print(data);
-          sprintf(serialOutputBuffer, "%sData sent to client: %s%s", Cgreen, data, Creset); // Debug statement
-          Serial.println(serialOutputBuffer);
-          serialOutputBuffer[0] = '\0';
-          break;  // Exit the loop after sending the data once
-        }
-      }
-    }
-    sprintf(serialOutputBuffer, "%sData Client Disconnected.%s", Cyellow, Creset);
-    Serial.println(serialOutputBuffer);
-    serialOutputBuffer[0] = '\0';
-  }
-  
-  // Website Function
-  WiFiClient WebClient = WebServer.available(); // Check for incoming connections
-  if (WebClient) { // If a client connects
-    sprintf(serialOutputBuffer, "%sNew Web Client.%s", Cblue, Creset);
-    Serial.println(serialOutputBuffer);
-    serialOutputBuffer[0] = '\0';
-    while (WebClient.connected()) { // Keep connection open until client disconnects
-      if (WebClient.available()) {
-        whiteLightness = map(analogRead(LightSensor), 50, 500, 10, 100);
-        analogWrite(whiteLED, whiteLightness); // Indicate that data transfer has started
-        screensaverActive = 0; // Disable screensaver
-        char c = WebClient.read(); // Read and save incoming data, initial connection including subpage request
-        referrer += c;
-        if (c == '\n') { // Check for end of line
-          int firstSpace = referrer.indexOf(' ');
-          int secondSpace = referrer.indexOf(' ', firstSpace + 1);
-          url = referrer.substring(firstSpace + 1, secondSpace);
-          url.trim(); // Isolated subpage request
-          String request = "";
-          while (WebClient.available()) {
-            char c = WebClient.read();
-            request += c;
-          }
-          sprintf(serialOutputBuffer, "%sURL :%s%s", Cblue, url, Creset);
-          Serial.println(serialOutputBuffer);
-          serialOutputBuffer[0] = '\0';
-          if (url == "/") {
-            mainPage(
-              WebClient,
-              bmp,
-              dht,
-              dht2,
-              Cblue,
-              Creset,
-              serialOutputBuffer,
-              seaLevelPressure,
-              LightSensor,
-              pressure,
-              formattedTime,
-              formattedC,
-              formattedF,
-              inTempDisplacement,
-              formattedOutC,
-              formattedOutF,
-              outTempDisplacement,
-              formattedLightSensorData,
-              lightDisplacement,
-              formattedHumiditySensor,
-              inHumidityDisplacement,
-              formattedOutHumiditySensor,
-              outHumidityDisplacement,
-              formattedPressureSensor,
-              pressureDisplacement,
-              altitude,
-              altitudeDisplacement,
-              formattedMicrophoneSensor,
-              noiseDisplacement,
-              formattedMagnetSensor,
-              secondsOnline,
-              hoursOnline
-            );
-            break;
-          } else if (url == "/about") {
-            aboutPage(serialOutputBuffer, WebClient, Cblue, Creset);
-            break;
-          } else if (url == "/data") {
-            dataPage(serialOutputBuffer, WebClient, Cblue, Creset);
-            break;
-          } else if (url == "/aprocryphan") {
-            aprocryphanPage(serialOutputBuffer, WebClient, Cblue, Creset);
-            break;
-          } else if (url == "/web1") {
-            web1Page(WebClient);
-            break;
-          } else { // Serve error 404 page
-            errPage(serialOutputBuffer, WebClient, Cyellow, Creset);
-            break;
-          }
-        }
-      }
-    }
-    WebClient.stop(); // Disconnect the client because all data has been sent
-    sprintf(serialOutputBuffer, "%sWeb Client disconnected.%s", Cyellow, Creset);
-    Serial.println(serialOutputBuffer);
-    serialOutputBuffer[0] = '\0';
-    analogWrite(whiteLED, LOW);
-    url = ""; // Empty out for next connection request
-    referrer = ""; // Empty out for next connection request
   }
   //Serial.println(millis() - DebugMillis); // Debugging
 }
