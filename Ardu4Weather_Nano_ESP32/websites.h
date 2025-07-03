@@ -42,18 +42,6 @@ void mainPage(
     sprintf(serialOutputBuffer, "%sMain Page Requested%s", Cblue, Creset);
     Serial.println(serialOutputBuffer);
     serialOutputBuffer[0] = '\0';
-    pressure = bmp.readPressure();
-    inTempDisplacement = constrain((map(dht.readTemperature(), -5, 30, 0, 100)), 0, 100); // Displacement for the indicators on the bars, maps and constrains input between -50 and 13300
-    outTempDisplacement = constrain((map(dht2.readTemperature(), -5, 30, 0, 100)), 0, 100);
-    lightDisplacement = constrain((map((analogRead(LightSensor) * 2), 0, 1000, 0, 100)), 0, 100);
-    inHumidityDisplacement = constrain((map(dht.readHumidity(), 0, 100, 0, 100)), 0, 100);
-    outHumidityDisplacement = constrain((map(dht2.readHumidity(), 0, 100, 0, 100)), 0, 100);
-    pressureDisplacement = constrain((map((pressure / 100), 980, 1030, 0, 100)), 0, 100);
-    altitudeDisplacement = constrain((map(bmp.readAltitude(seaLevelPressure), 0, 3000, 0, 100)), 0, 100);
-    noiseDisplacement = constrain((map((MicLevels()), 10, 700, 0, 100)), 0, 100);
-    if (isnan(dht2.readTemperature())) { // If the outdoor sensor is disconnected indicator is at 0
-      outTempDisplacement = 0;
-    }
     // Style/CSS Section
     response->print("<head><meta charset='utf-8'>");
     response->print("<title>Ardu4Weather</title>");

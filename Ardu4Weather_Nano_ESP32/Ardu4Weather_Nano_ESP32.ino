@@ -16,12 +16,12 @@
 #include <Adafruit_SSD1306.h> // For OLED Monitor
 #include "DHT.h" // For DHT11 sensor
 #include <Adafruit_BMP085.h> // Use Adafruit BMP085 library for BMP180
-#define DHTPIN 7 // Digital pin connected to the indoor DHT sensor
-#define DHTOUTPIN 8 // Digital pin connected to the outdoor DHT sensor
+#define DHTPIN A6 // Digital pin connected to the indoor DHT sensor
+#define DHTOUTPIN A7 // Digital pin connected to the outdoor DHT sensor
 #define DHTTYPE DHT11 // The type of DHT sensor
 #define SCREEN_WIDTH 128 // OLED display width, in pixels
 #define SCREEN_HEIGHT 64 // OLED display height, in pixels
-#define OLED_RESET 4 // Reset pin # (or -1 if sharing Arduino reset pin)
+#define OLED_RESET -1 // Reset pin
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET); // Declares the OLED display
 AsyncWebServer WebServer(8080); // Defines the port that the web server is hosted on
 WiFiClient WebClient; // Declare DataClient globally
@@ -33,6 +33,8 @@ unsigned long unixTime; // Variable to hold unix time fetched from NTP server
 DHT dht(DHTPIN, DHTTYPE); // Create a DHT object for the indoor sensor
 DHT dht2(DHTOUTPIN, DHTTYPE); // Create a DHT object for the outdoor sensor
 Adafruit_BMP085 bmp; // Create a BMP object for the BMP180 sensor
+
+struct tm timeinfo;
 const char* ntpServer = "pool.ntp.org"; // NTP server
 const long gmtOffset_sec = 0;
 const int daylightOffset_sec = 3600;
@@ -187,6 +189,8 @@ String request = "null";
 */
 
 TaskHandle_t sensorPollingTask;
+TaskHandle_t oledUpdatingTask;
+SemaphoreHandle_t i2cMutex;
 
 void setup() {
   pinMode(magneticSensor, INPUT);
@@ -197,15 +201,13 @@ void setup() {
   pinMode(blueLED, OUTPUT);
   pinMode(whiteLED, OUTPUT);
   Serial.begin(57600);
-  Serial1.begin(57600);
-  Serial.println("\n*************** Ardu4Weather v0.26.0 - Commit 23 *******************");
+  vTaskDelay(pdMS_TO_TICKS(1000)); // Wait for Serial to initialize
+  Serial.println("\n*************** Ardu4Weather v0.30.0 - Commit 28 *******************");
 
   // Initialize the OLED display
   display.cp437(true);
   if(!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) {   // Address 0x3C for 128x64
-    sprintf(serialOutputBuffer, "%sSSD1306 allocation failed%s", Cred, Creset);
-    Serial.println(serialOutputBuffer);
-    for(;;); // Don't proceed, loop forever
+    Serial.println("serialSSD1306 allocation failed");
   }
   display.clearDisplay();
   display.setTextSize(1); 
@@ -325,9 +327,7 @@ void setup() {
   dht.begin();
   dht2.begin();
   if (isnan(dht.readTemperature()) || isnan(dht2.readTemperature())) { // If the DHT sensors fail to initialize
-    sprintf(serialOutputBuffer, "%sFailed to initialize DHT sensors%s", Cred, Creset);
-    Serial.println(serialOutputBuffer);
-    serialOutputBuffer[0] = '\0';
+    Serial.println("Failed to initialize DHT sensors");
     display.clearDisplay();
     display.setCursor(0, 16);
     display.setTextSize(1);
@@ -341,14 +341,12 @@ void setup() {
 
   // initialize BMP sensor
   if (!bmp.begin()) { // If the BMP sensor fails to initialize
-    sprintf(serialOutputBuffer, "%sCould not find a valid BMP085/BMP180 sensor, check wiring!%s", Cred, Creset);
-    Serial.println(serialOutputBuffer); 
+    Serial.println("Could not find a valid BMP085/BMP180 sensor, check wiring!"); 
     display.clearDisplay();
     display.setCursor(0, 16);
     display.setTextSize(1);
     display.print("Could not find a valid BMP085/BMP180 sensor, check wiring!");
     display.display();
-    for (;;); // Don't proceed, loop forever
   }
 
   // Reset reason
@@ -360,7 +358,7 @@ void setup() {
     case ESP_RST_POWERON:    Serial.println("Power on"); break;
     case ESP_RST_EXT:        Serial.println("External reset"); break;
     case ESP_RST_SW:         Serial.println("Software reset"); break;
-    case ESP_RST_PANIC:      Serial.println("Panic/exception"); break;
+    case ESP_RST_PANIC:      Serial.println("Panic/exception"); break; // Illegal instruction or illegal memory access or stack overflow
     case ESP_RST_INT_WDT:    Serial.println("Interrupt watchdog"); break; // IWDT
     case ESP_RST_TASK_WDT:   Serial.println("Task watchdog"); break;     // TWDT
     case ESP_RST_WDT:        Serial.println("Other watchdog"); break;
@@ -371,16 +369,16 @@ void setup() {
   }
 
   //RandomStaticLoad(); // Load a random static image onto the LED Matrix
-  sprintf(serialOutputBuffer, "%sSetup Complete%s", Cgreen, Creset);
-  Serial.println(serialOutputBuffer);
-  serialOutputBuffer[0] = '\0'; // Clear the serial output buffer by setting the first character to null
+  Serial.println("Setup Complete");
 
   // for screensavers
-  randomSeed(analogRead(0));
+  randomSeed(analogRead(A7));
   lastEffectChangeTime = millis();
   display.clearDisplay();
 
-  xTaskCreatePinnedToCore(sensorPoll, "Sensor Polling Task", STACK_SIZE_2, NULL, 2, &sensorPollingTask, CORE_1);
+  i2cMutex = xSemaphoreCreateMutex();
+  xTaskCreatePinnedToCore(sensorPoll, "Sensor Polling Task", STACK_SIZE_4, NULL, 2, &sensorPollingTask, CORE_0);
+  xTaskCreatePinnedToCore(oledFunctions, "OLED Updating Task", STACK_SIZE_4, NULL, 2, &oledUpdatingTask, CORE_0);
 }
 
 // NetworkChange, If the network disconnects, it reconnects to another predefined network
@@ -390,9 +388,7 @@ void NetworkChange() {
     switch(network) {
       case 0:
         WiFi.begin(SECRET_SSID, SECRET_OPTIONAL_PASS);
-        sprintf(serialOutputBuffer, "%sConnected To Network 1.%s", Cblue, Creset);
-        Serial.println(serialOutputBuffer);
-        serialOutputBuffer[0] = '\0';
+        Serial.println("Connected To Network 1.");
         display.setTextSize(2);
         display.setCursor(0, 30);
         display.write(0xAE);
@@ -407,9 +403,7 @@ void NetworkChange() {
         break;
       case 1:
         WiFi.begin(SECRET_SSID_2, SECRET_OPTIONAL_PASS_2);
-        sprintf(serialOutputBuffer, "%sConnected To Network 2.%s", Cblue, Creset);
-        Serial.println(serialOutputBuffer);
-        serialOutputBuffer[0] = '\0';
+        Serial.println("Connected To Network 2.");
         display.setTextSize(2);
         display.setCursor(0, 30);
         display.write(0xAF);
@@ -444,7 +438,6 @@ T calculateAverage(T value, unsigned long interval, unsigned long &lastUpdateTim
 }
 
 void printLocalTime() {
-  struct tm timeinfo;
   if (!getLocalTime(&timeinfo)) {
     Serial.println("Failed to obtain time");
     return;
@@ -677,38 +670,60 @@ int MicLevels() {
 
 void sensorPoll(void *pvParameters) {
   while (true) {
-    SensorPreviousMillis = millis();
-    sprintf(formattedTime, "%s / %s", dateOnly, timeOnly);
-    formattedC = dht.readTemperature();
-    formattedOutC = dht2.readTemperature();
-    formattedF = (dht.readTemperature() * 9.0/5.0) + 32.0;
-    formattedOutF = (dht2.readTemperature() * 9.0/5.0) + 32.0;
+    if (xSemaphoreTake(i2cMutex, pdMS_TO_TICKS(100))) {
+      float temp1 = dht.readTemperature();
+      float temp2 = dht2.readTemperature();
+      float hum1 = dht.readHumidity();
+      float hum2 = dht2.readHumidity();
+      float pres = bmp.readPressure();
+      float alt = bmp.readAltitude(seaLevelPressure);
+
+      formattedC = temp1;
+      formattedOutC = temp2;
+      formattedF = (temp1 * 9.0/5.0) + 32.0;
+      formattedOutF = (temp2 * 9.0/5.0) + 32.0;
+      formattedHumiditySensor = hum1;
+      formattedOutHumiditySensor = hum2;
+      pressure = pres;
+      formattedPressureSensor = pres / 100;
+      altitude = alt;
+      pressureDisplacement = constrain((map((pres / 100), 980, 1030, 0, 100)), 0, 100);
+      altitudeDisplacement = constrain((map(alt, 0, 3000, 0, 100)), 0, 100);
+
+      xSemaphoreGive(i2cMutex);
+    }
     formattedLightSensorData = analogRead(LightSensor) * 2;
-    formattedHumiditySensor = dht.readHumidity();
-    formattedOutHumiditySensor = dht2.readHumidity();
-    pressure = bmp.readPressure();
-    formattedPressureSensor = pressure / 100;
     formattedMicrophoneSensor = MicLevels();
     formattedMagnetSensor = (digitalRead(magneticSensor) == 1 ? 0 : 1);
-    altitude = bmp.readAltitude(seaLevelPressure);
     signalStrength = WiFi.RSSI();
+    inTempDisplacement = constrain((map(formattedC, -5, 30, 0, 100)), 0, 100);
+    outTempDisplacement = constrain((map(formattedOutC, -5, 30, 0, 100)), 0, 100);
+    lightDisplacement = constrain((map((analogRead(LightSensor) * 2), 0, 1000, 0, 100)), 0, 100);
+    inHumidityDisplacement = constrain((map(formattedHumiditySensor, 0, 100, 0, 100)), 0, 100);
+    outHumidityDisplacement = constrain((map(formattedOutHumiditySensor, 0, 100, 0, 100)), 0, 100);
+    noiseDisplacement = constrain((map((MicLevels()), 10, 700, 0, 100)), 0, 100);
+    if (isnan(formattedOutC)) {
+      outTempDisplacement = 0;
+    }
     vTaskDelay(pdMS_TO_TICKS(5000));
-    taskYIELD(); // Yield to other tasks
+    taskYIELD();
   }
 }
 
-void oledFunctions() {
+void oledFunctions(void *pvParameters) {
+  int secondsCounter = 0;
+  const int panelSwitchIntervalSeconds = 5;
+  const int screensaverCheckIntervalSeconds = 300; // 5 minutes
   while (true) {
-    if (millis() - screensaverMillis >= 300000) {
-      screensaverMillis = millis();
+    secondsCounter++; // Increment our main counter each second
+    if (secondsCounter % screensaverCheckIntervalSeconds == 0) {
       screensaverActive = (screensaverActive == 1) ? 0 : ((random(0, 4) == 1) ? 1 : screensaverActive);
     }
+    display.clearDisplay();
     if (screensaverActive == 0) {
-      if (millis() - OLEDPreviousMillis >= 5000) {
-        OLEDPreviousMillis = millis();
+      if (secondsCounter % panelSwitchIntervalSeconds == 0) {
         OLEDPanel = (OLEDPanel + 1) % 3;
       }
-      display.clearDisplay();
       OLEDHeader(dateOnly, timeOnly);
       switch (OLEDPanel) {
         case 0:
@@ -721,29 +736,14 @@ void oledFunctions() {
           OLEDPanel3(localIP, subnetMask, gatewayIP, NTPIP, signalStrength, previousMillis, DP24);
           break;
       }
-      display.display(); // Display everything held in buffer
     } else {
       screensavers();
-      display.display();
     }
-    vTaskDelay(pdMS_TO_TICKS(0));
+    display.display();
+    vTaskDelay(pdMS_TO_TICKS(1000));
     taskYIELD(); // Yield to other tasks
   }
 }
-
-int DebugMillis = 0;
-void loop() {
-  //DebugMillis = millis(); // Reset the debug timer
-  // Put continuous updates here
-  LiveThermomiter();
-  NetworkChange();
-  //DeltaPressure24();
-  //float DP24 = DeltaPressure24();
-
-  // Time and Date Data
-  secondsOnline = millis() / 1000;
-  sprintf(hoursOnline, "%.2f", (millis() / 3600000.0));
-  sprintf(daysOnline, "%.2f", (millis() / 86400000.0));
 
   /* CSV Server Data Function, When a connection is made, data is sent. a partner python script saves the data to a CSV file.
   WiFiClient DataClient = DataServer.available(); // Check for incoming connections
@@ -771,6 +771,23 @@ void loop() {
     Serial.println(serialOutputBuffer);
     serialOutputBuffer[0] = '\0';
   }*/
+
+int DebugMillis = 0;
+void loop() {
+  //DebugMillis = millis(); // Reset the debug timer
+  // Put continuous updates here
+  strftime(dateOnly, sizeof(dateOnly), "%d-%m-%Y", &timeinfo);
+  strftime(timeOnly, sizeof(timeOnly), "%H:%M:%S", &timeinfo);
+  sprintf(formattedTime, "%s / %s", dateOnly, timeOnly);
+  LiveThermomiter();
+  NetworkChange();
+  //DeltaPressure24();
+  //float DP24 = DeltaPressure24();
+
+  // Time and Date Data
+  secondsOnline = millis() / 1000;
+  sprintf(hoursOnline, "%.2f", (millis() / 3600000.0));
+  sprintf(daysOnline, "%.2f", (millis() / 86400000.0));
   vTaskDelay(pdMS_TO_TICKS(1000));
   taskYIELD(); // Yield to other tasks
 }
