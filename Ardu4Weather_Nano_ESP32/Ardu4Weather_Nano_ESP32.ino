@@ -43,6 +43,8 @@ const int daylightOffset_sec = 3600;
 const int TempSensor = A0;
 const int microphoneSensor = A1;
 const int LightSensor = A2;
+// DHT1 A6
+// DHT2 A7
 
 // Right Side
 const int whiteLED = D2; //PWM
@@ -92,6 +94,12 @@ int tPosition = 0;
 const float offset = 0.0; // Offset For Temp Sensor (adjust as needed)
 const float gain = 1.00; // Gain For Temp Sensor (adjust as needed)
 const float seaLevelPressure = 101325.0;
+float temp1 = 0.0;
+float hum1 = 0.0;
+float temp2 = 0.0;
+float hum2 = 0.0;
+float pres = 0.0;
+float alt = 0.0;
 float Temp = 0.0;
 float TempAverage = 0.0; // Stores average temperature
 float LightAverage = 0.0; // Stores average light level
@@ -192,6 +200,10 @@ TaskHandle_t sensorPollingTask;
 TaskHandle_t oledUpdatingTask;
 SemaphoreHandle_t i2cMutex;
 
+bool dht_ok = false;
+bool dht2_ok = false;
+bool bmp_ok = false;
+
 void setup() {
   pinMode(magneticSensor, INPUT);
   pinMode(redLED, OUTPUT);
@@ -201,8 +213,8 @@ void setup() {
   pinMode(blueLED, OUTPUT);
   pinMode(whiteLED, OUTPUT);
   Serial.begin(57600);
-  vTaskDelay(pdMS_TO_TICKS(1000)); // Wait for Serial to initialize
-  Serial.println("\n*************** Ardu4Weather v0.30.0 - Commit 28 *******************");
+  delay(3000); // Wait for Serial to initialize
+  Serial.println("\n*************** Ardu4Weather v0.30.0 - Commit 29 *******************");
 
   // Initialize the OLED display
   display.cp437(true);
@@ -326,6 +338,12 @@ void setup() {
   // initialize DHT sensors
   dht.begin();
   dht2.begin();
+  if (!isnan(dht.readTemperature())) {
+    dht_ok = true;
+  }
+  if (!isnan(dht2.readTemperature())) {
+    dht2_ok = true;
+  }
   if (isnan(dht.readTemperature()) || isnan(dht2.readTemperature())) { // If the DHT sensors fail to initialize
     Serial.println("Failed to initialize DHT sensors");
     display.clearDisplay();
@@ -340,7 +358,9 @@ void setup() {
   printLocalTime();
 
   // initialize BMP sensor
-  if (!bmp.begin()) { // If the BMP sensor fails to initialize
+  if (bmp.begin()) {
+    bmp_ok = true;
+  } else {
     Serial.println("Could not find a valid BMP085/BMP180 sensor, check wiring!"); 
     display.clearDisplay();
     display.setCursor(0, 16);
@@ -537,7 +557,7 @@ void OLEDHeader(char dateOnly[], char timeOnly[]) {
 void OLEDPanel1(float formattedC, int formattedLightSensorData, float formattedHumdiditySensor, float formattedPressureSensor, int formattedMicrophoneSensor, char hoursOnline[]) {
   display.setTextSize(1);
   display.setCursor(110, 16);
-  display.print("1/3");
+  display.print("1/4");
   display.setCursor(0, 16); 
   sprintf(serialOutputBuffer, "Temp: %.1f", formattedC);
   display.print(serialOutputBuffer);
@@ -564,7 +584,7 @@ void OLEDPanel1(float formattedC, int formattedLightSensorData, float formattedH
 void OLEDPanel2(float formattedOutC, float formattedOutHumiditySensor, int formattedMagnetSensor, float altitude, char daysOnline[]) {
   display.setTextSize(1);
   display.setCursor(110, 16);
-  display.print("2/3");
+  display.print("2/4");
   display.setCursor(0, 16);
   sprintf(serialOutputBuffer, "OTemp: %.1f", formattedOutC);
   display.print(serialOutputBuffer);
@@ -589,7 +609,7 @@ void OLEDPanel2(float formattedOutC, float formattedOutHumiditySensor, int forma
 void OLEDPanel3(String localIP, String subnetMask, String gatewayIP, String NTPIP, int signalStrength, unsigned long previousMillis, float DP24) {
   display.setTextSize(1);
   display.setCursor(110, 16);
-  display.print("3/3");
+  display.print("3/4");
   display.setCursor(0, 16);
   display.println("IP: " + localIP);
   display.setCursor(0, 24);
@@ -607,6 +627,22 @@ void OLEDPanel3(String localIP, String subnetMask, String gatewayIP, String NTPI
   display.setCursor(0, 64);
   sprintf(serialOutputBuffer, "DP: %.2f", DP24);
   display.println(serialOutputBuffer);
+}
+
+void OLEDPanel4() {
+  display.setTextSize(1);
+  display.setCursor(110, 16);
+  display.print("4/4");
+  display.setCursor(0, 16);
+  display.println("Ardu4Weather v0.30.0");
+  display.setCursor(0, 24);
+  display.println("DHT: " + String(dht_ok ? "OK" : "Failed"));
+  display.setCursor(0, 32);
+  display.println("DHT2: " + String(dht2_ok ? "OK" : "Failed"));
+  display.setCursor(0, 40);
+  display.println("BMP: " + String(bmp_ok ? "OK" : "Failed"));
+  display.setCursor(0, 48);
+  display.println("WiFi: " + String(WiFi.status() == WL_CONNECTED ? "OK" : "Failed"));
 }
 
 void screensavers() {
@@ -670,14 +706,19 @@ int MicLevels() {
 
 void sensorPoll(void *pvParameters) {
   while (true) {
-    if (xSemaphoreTake(i2cMutex, pdMS_TO_TICKS(100))) {
-      float temp1 = dht.readTemperature();
-      float temp2 = dht2.readTemperature();
-      float hum1 = dht.readHumidity();
-      float hum2 = dht2.readHumidity();
-      float pres = bmp.readPressure();
-      float alt = bmp.readAltitude(seaLevelPressure);
-
+    if (xSemaphoreTake(i2cMutex, pdMS_TO_TICKS(1000))) {
+      if (dht_ok) {
+      temp1 = dht.readTemperature();
+      hum1 = dht.readHumidity();
+      }
+      if (dht2_ok) {
+      temp2 = dht2.readTemperature();
+      hum2 = dht2.readHumidity();
+      }
+      if (bmp_ok) {
+      pres = bmp.readPressure();
+      alt = bmp.readAltitude(seaLevelPressure);
+      }
       formattedC = temp1;
       formattedOutC = temp2;
       formattedF = (temp1 * 9.0/5.0) + 32.0;
@@ -715,15 +756,16 @@ void oledFunctions(void *pvParameters) {
   const int panelSwitchIntervalSeconds = 5;
   const int screensaverCheckIntervalSeconds = 300; // 5 minutes
   while (true) {
-    secondsCounter++; // Increment our main counter each second
+    secondsCounter++;
     if (secondsCounter % screensaverCheckIntervalSeconds == 0) {
       screensaverActive = (screensaverActive == 1) ? 0 : ((random(0, 4) == 1) ? 1 : screensaverActive);
     }
-    display.clearDisplay();
-    if (screensaverActive == 0) {
-      if (secondsCounter % panelSwitchIntervalSeconds == 0) {
-        OLEDPanel = (OLEDPanel + 1) % 3;
-      }
+    if (xSemaphoreTake(i2cMutex, pdMS_TO_TICKS(1000)) == pdTRUE) {
+      display.clearDisplay();
+      if (screensaverActive == 0) {
+        if (secondsCounter % panelSwitchIntervalSeconds == 0) {
+          OLEDPanel = (OLEDPanel + 1) % 4;
+        }
       OLEDHeader(dateOnly, timeOnly);
       switch (OLEDPanel) {
         case 0:
@@ -735,11 +777,16 @@ void oledFunctions(void *pvParameters) {
         case 2:
           OLEDPanel3(localIP, subnetMask, gatewayIP, NTPIP, signalStrength, previousMillis, DP24);
           break;
-      }
-    } else {
+        case 3:
+          OLEDPanel4();
+          break;
+        }
+      } else {
       screensavers();
-    }
+      }
     display.display();
+    }
+    xSemaphoreGive(i2cMutex);
     vTaskDelay(pdMS_TO_TICKS(1000));
     taskYIELD(); // Yield to other tasks
   }
