@@ -5,7 +5,7 @@ Ardu4Weather is an Arduino-based weather station project that collects and displ
 
 It is constantly evolving and changing as I develop it and right now it isn't fit to be used generally and is more of a personal project but still feel free to create pull requests and use the code for yourself!
 
-![Screenshot of the Ardu4Weather Website](https://i.imgur.com/DgSVdS3.png)
+![Screenshot of the Ardu4Weather Website](https://media.chpi.uk/oldhomepage.png)
 ## Features:
 * Connects to multiple WiFi networks
 * Reads data from various sensors (temperature, humidity, pressure, light)
